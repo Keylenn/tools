@@ -5,10 +5,12 @@ importers:
   .:
     specifiers:
       chalk: ^4.1.2
+      elapsed-time-logger: ^1.1.7
       font-pick: ^0.1.0
       minimist: ^1.2.8
     dependencies:
       chalk: 4.1.2
+      elapsed-time-logger: 1.1.7
       font-pick: link:packages/font-pick
       minimist: 1.2.8
 
@@ -25,6 +27,10 @@ packages:
     engines: {node: '>=8'}
     dependencies:
       color-convert: 2.0.1
+    dev: false
+
+  /browser-hrtime/1.1.8:
+    resolution: {integrity: sha512-kzXheikaJsBtzUBlyVtPIY5r0soQePzjwVwT4IlDpU2RvfB5Py52gpU98M77rgqMCheoSSZvrcrdj3t6cZ3suA==}
     dev: false
 
   /chalk/4.1.2:
@@ -44,6 +50,12 @@ packages:
 
   /color-name/1.1.4:
     resolution: {integrity: sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA==}
+    dev: false
+
+  /elapsed-time-logger/1.1.7:
+    resolution: {integrity: sha512-0BNWKab+7eplVyvStljbhw5C1kYUkk3/etVEIcpgCEMjAGssze1LcNExetRL466A2SvITeoe/IcJSQfHncv1HA==}
+    dependencies:
+      browser-hrtime: 1.1.8
     dev: false
 
   /has-flag/4.0.0:

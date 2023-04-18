@@ -4,7 +4,8 @@ const opentype = require('opentype.js')
 const minimist = require("minimist")
 const path = require('path')
 const chalk = require('chalk')
-const fs = require('fs');
+const fs = require('fs')
+const elapsed = require("elapsed-time-logger")
 
 const defaultArgv = {
   font: './font.ttf',
@@ -44,39 +45,40 @@ if(argv.help) {
   process.exit(0)
 } else if(!argv.string) {
   errorChalk(`Parameter [string] is required! Run "${bashChalk("fp --help")}" to learn more`)
-  process.exit(-1);
+  process.exit(-1)
 }
 
 
 async function pick() {
   try {
-  const fontPath = path.resolve(argv.dir, argv.font)
-  const [fontName, ext] = path.basename(fontPath).split('.')
-  log('fontPath:', pathChalk(fontPath))
+    const progressElapsedTimer = elapsed.start()
+    const fontPath = path.resolve(argv.dir, argv.font)
+    const [fontName, ext] = path.basename(fontPath).split('.')
+    log('fontPath:', pathChalk(fontPath))
 
-  const font = await opentype.load(fontPath)
-  
-  const stringGlyphs =  font.stringToGlyphs(argv.string)
+    const font = await opentype.load(fontPath)
+    
+    const stringGlyphs =  font.stringToGlyphs(argv.string)
 
-  const create = (glyphs = []) => {
-    const pickedFont = new opentype.Font({
-      familyName: font.names.fontFamily.en,
-      styleName: font.names.fontSubfamily.en,
-      unitsPerEm: 1000,
-      ascender: 800,
-      descender: -200,
-      glyphs
-    })
+    const create = (glyphs = []) => {
+      const pickedFont = new opentype.Font({
+        familyName: font.names.fontFamily.en,
+        styleName: font.names.fontSubfamily.en,
+        unitsPerEm: 1000,
+        ascender: 800,
+        descender: -200,
+        glyphs
+      })
 
-    const outputDir = path.resolve(argv.dir, argv.output)
-    const outputBaseName = `${argv.name || fontName}.${ext}`
-    const outputPath = path.join(outputDir, outputBaseName)
-    log('outputPath:', chalk.yellow(outputPath))
+      const outputDir = path.resolve(argv.dir, argv.output)
+      const outputBaseName = `${argv.name || fontName}.${ext}`
+      const outputPath = path.join(outputDir, outputBaseName)
+      log('outputPath:', chalk.yellow(outputPath))
 
-    if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir);
+      if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir)
 
-    fs.writeFileSync(outputPath, Buffer.from(pickedFont.toArrayBuffer()))
-  }
+      fs.writeFileSync(outputPath, Buffer.from(pickedFont.toArrayBuffer()))
+    }
 
     if(argv.base) {
       const basePath = path.resolve(argv.dir, argv.base)
@@ -105,7 +107,7 @@ async function pick() {
     } else {
       create(stringGlyphs)
     }
-    log(chalk.green('✅ Pick font successfully!'))
+    progressElapsedTimer.end(chalk.green('✅ Pick font successfully!'))
   } catch (error) {
     errorChalk(error)
   }

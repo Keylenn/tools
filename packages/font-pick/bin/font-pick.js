@@ -6,6 +6,8 @@ const path = require('path')
 const chalk = require('chalk')
 const fs = require('fs')
 const elapsed = require("elapsed-time-logger")
+const http = require('http')
+const https = require('https')
 
 const defaultArgv = {
   font: './font.ttf',
@@ -49,16 +51,62 @@ if(argv.help) {
 }
 
 
+function loadFontFromUrl(url) {
+  return new Promise((resolve, reject) => {
+    const {protocol, hostname, pathname, port} = new URL(url)
+    const isHttps = protocol === "https:"
+
+    const callback = function(res) {
+      const chunks = []
+      res.on('data', function(chunk) {
+        chunks.push(chunk)
+      })
+      res.on('end', function() {
+        const buffer = Buffer.concat(chunks)
+        const font = opentype.parse(buffer.buffer)
+        resolve(font)
+      })
+    }
+
+    const ClientRequest = isHttps ? https.get({
+      hostname,
+      port,
+      path: pathname,
+      method: 'GET',
+      rejectUnauthorized: false, // ignore certificate verification
+    }, callback) : http.get(url, callback)
+    
+    ClientRequest.on('error', function(err) {
+      reject(err)
+    })
+
+  })
+}
+
+const isPathUrl = s =>  /^http(s)?/.test(s)
+
+function parsePath(p) {
+  const names =  path.basename(p).split('.')
+  const ext = names.pop()
+  return {
+    name: names.join('.'),
+    ext
+  }
+}
+
 async function pick() {
   try {
-    const progressElapsedTimer = elapsed.start()
-    const fontPath = path.resolve(argv.dir, argv.font)
-    const [fontName, ext] = path.basename(fontPath).split('.')
-    log('fontPath:', pathChalk(fontPath))
+    const isFontPathUrl = isPathUrl(argv.font)
+    const fontPath = isFontPathUrl ? argv.font : path.resolve(argv.dir, argv.font)
+    const {name: fontName, ext} = parsePath(fontPath)
 
-    const font = await opentype.load(fontPath)
-    
+    const progressElapsedTimer = elapsed.start()
+    // @TODO 封装成方法
+    const loadFont = isFontPathUrl ? loadFontFromUrl : opentype.load
+    log('fontPath:', pathChalk(argv.font))
+    const font = await loadFont(fontPath)
     const stringGlyphs =  font.stringToGlyphs(argv.string)
+    console.log(111, stringGlyphs)
 
     const create = (glyphs = []) => {
       const pickedFont = new opentype.Font({
@@ -81,9 +129,11 @@ async function pick() {
     }
 
     if(argv.base) {
-      const basePath = path.resolve(argv.dir, argv.base)
-      log('basePath:', chalk.yellow(basePath))
-      const base = await opentype.load(basePath)
+      const isBasePathUrl = isPathUrl(argv.base)
+      const basePath = isBasePathUrl ? argv.base : path.resolve(argv.dir, argv.base)
+      log('basePath:', chalk.yellow(argv.base))
+      const loadBase = isBasePathUrl ? loadFontFromUrl : opentype.load
+      const base = await loadBase(basePath)
 
       const mergedGlyphs = []
       const nameUnicodeMap = {}

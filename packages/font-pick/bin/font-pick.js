@@ -34,23 +34,6 @@ const bashChalk = chalk.hex('#c864c8')
 const pathChalk = (p) => chalk.yellow(p)
 const errorChalk = (msg) => log(chalk.red('❌ Failed to pick font:'), msg)
 
-
-if(argv.help) {
-  log(`${chalk.green('🗂️ Usage:')}`)
-  log(`  ${bashChalk('fp --help')} // Print help information`)
-  log(`  ${bashChalk('fp -s ')}${bashChalk.italic('0123')} // The string that needs to be picked`)
-  log(`  ${bashChalk('fp -f ')}${bashChalk.italic('./font.ttf')} // Full font package path, the default option is ${defaultArgv.font}`)
-  log(`  ${bashChalk('fp -b ')}${bashChalk.italic('./base.ttf')} // Basic font package path, new fonts will be based on this font package`)
-  log(`  ${bashChalk('fp -d ')}${bashChalk.italic('./font')} // Directory where font packages are looked up and generated, the default option is the current working directory`)
-  log(`  ${bashChalk('fp -o ')}${bashChalk.italic('./font-pick')} // Directory where the font package is generated,  the default option is ${defaultArgv.output}`)
-  log(`  ${bashChalk('fp -n ')}${bashChalk.italic('font')} // The name of the generated font package, the default option is the basename of the font option`)
-  process.exit(0)
-} else if(!argv.string) {
-  errorChalk(`Parameter [string] is required! Run "${bashChalk("fp --help")}" to learn more`)
-  process.exit(-1)
-}
-
-
 function loadFontFromUrl(url) {
   return new Promise((resolve, reject) => {
     const {protocol, hostname, pathname, port} = new URL(url)
@@ -63,6 +46,7 @@ function loadFontFromUrl(url) {
       })
       res.on('end', function() {
         const buffer = Buffer.concat(chunks)
+        console.log(111, buffer)
         const font = opentype.parse(buffer.buffer)
         resolve(font)
       })
@@ -83,7 +67,17 @@ function loadFontFromUrl(url) {
   })
 }
 
-const isPathUrl = s =>  /^http(s)?/.test(s)
+const isPathUrl = s => /^http(s)?/.test(s)
+
+const parseFont = (p) => isPathUrl(p) ? {
+    path: p,
+    loadFont: loadFontFromUrl,
+  } : {
+    path: path.resolve(argv.dir, p),
+    loadFont: opentype.load
+  }
+
+
 
 function parsePath(p) {
   const names =  path.basename(p).split('.')
@@ -94,18 +88,17 @@ function parsePath(p) {
   }
 }
 
+
 async function pick() {
   try {
-    const isFontPathUrl = isPathUrl(argv.font)
-    const fontPath = isFontPathUrl ? argv.font : path.resolve(argv.dir, argv.font)
+    const progressElapsedTimer = elapsed.start()
+
+    const {path: fontPath, loadFont} = parseFont(argv.font)
     const {name: fontName, ext} = parsePath(fontPath)
 
-    const progressElapsedTimer = elapsed.start()
-    // @TODO 封装成方法
-    const loadFont = isFontPathUrl ? loadFontFromUrl : opentype.load
     log('fontPath:', pathChalk(argv.font))
     const font = await loadFont(fontPath)
-    const stringGlyphs =  font.stringToGlyphs(argv.string)
+    const stringGlyphs = font.stringToGlyphs(argv.string)
     console.log(111, stringGlyphs)
 
     const create = (glyphs = []) => {
@@ -129,10 +122,8 @@ async function pick() {
     }
 
     if(argv.base) {
-      const isBasePathUrl = isPathUrl(argv.base)
-      const basePath = isBasePathUrl ? argv.base : path.resolve(argv.dir, argv.base)
+      const {path: basePath, loadFont: loadBase} = parseFont(argv.base)
       log('basePath:', chalk.yellow(argv.base))
-      const loadBase = isBasePathUrl ? loadFontFromUrl : opentype.load
       const base = await loadBase(basePath)
 
       const mergedGlyphs = []
@@ -163,6 +154,32 @@ async function pick() {
   }
 }
 
+// process
+if(argv.help) {
+  log(`${chalk.green('🗂️ Usage:')}`)
+  log(`  ${bashChalk('fp --help')} // Print help information`)
+  log(`  ${bashChalk('fp -s ')}${bashChalk.italic('0123')} // The string that needs to be picked`)
+  log(`  ${bashChalk('fp -f ')}${bashChalk.italic('./font.ttf')} // Full font package path, the default option is ${defaultArgv.font}`)
+  log(`  ${bashChalk('fp -b ')}${bashChalk.italic('./base.ttf')} // Basic font package path, new fonts will be based on this font package`)
+  log(`  ${bashChalk('fp -d ')}${bashChalk.italic('./font')} // Directory where font packages are looked up and generated, the default option is the current working directory`)
+  log(`  ${bashChalk('fp -o ')}${bashChalk.italic('./font-pick')} // Directory where the font package is generated,  the default option is ${defaultArgv.output}`)
+  log(`  ${bashChalk('fp -n ')}${bashChalk.italic('font')} // The name of the generated font package, the default option is the basename of the font option`)
+  process.exit(0)
+} else if(!argv.string) {
+  errorChalk(`Parameter [string] is required! Run "${bashChalk("fp --help")}" to learn more`)
+  process.exit(-1)
+} else {
+  pick()
+}
 
-pick()
+
+// ttf ✅ ttf(http) ✅  ttf(https) ✅
+// otf ✅ otf(http) ✅  otf(https) ✅
+// woff ✅  woff(http) ❌ woff(https)  ❌ 
+// woff2 ❌  woff2(http) ❌ woff2(https)  ❌ 
+
+// 使用 https://fontconverter.com/zh/
+
+
+
 

@@ -98,8 +98,9 @@ async function pick() {
 
     log('fontPath:', pathChalk(argv.font))
     const font = await loadFont(fontPath)
-    const stringGlyphs = font.stringToGlyphs(argv.string)
-    console.log(111, stringGlyphs)
+    const filterString = [...new Set(argv.string.replace(/\s/g, '').split(''))].join('')
+    const stringGlyphs = font.stringToGlyphs(filterString)
+    console.log(111, stringGlyphs, filterString)
 
     const create = (glyphs = []) => {
       const pickedFont = new opentype.Font({

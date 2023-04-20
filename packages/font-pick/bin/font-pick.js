@@ -100,16 +100,19 @@ async function pick() {
     const font = await loadFont(fontPath)
     const filterString = [...new Set(argv.string.replace(/\s/g, '').split(''))].join('')
     const stringGlyphs = font.stringToGlyphs(filterString)
-    console.log(111, stringGlyphs, filterString)
 
     const create = (glyphs = []) => {
+      // add .notdef glyphs
+      const notdefGlyphs = font.glyphs.glyphs['0']
+      if(notdefGlyphs && notdefGlyphs.name === '.notdef') glyphs.unshift(notdefGlyphs)
+
       const pickedFont = new opentype.Font({
         familyName: font.names.fontFamily.en,
         styleName: font.names.fontSubfamily.en,
         unitsPerEm: 1000,
         ascender: 800,
         descender: -200,
-        glyphs
+        glyphs,
       })
 
       const outputDir = path.resolve(argv.dir, argv.output)

@@ -7,6 +7,7 @@
 Pick only the fonts you want. 只选你想要的字体。
 
 ## ✨特性
++ 更轻量，压缩后的字体包xxx
 
 ## ⚡️ 快速开始
 ```bash

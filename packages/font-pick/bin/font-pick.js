@@ -6,6 +6,7 @@ const path = require('path')
 const chalk = require('chalk')
 const fs = require('fs')
 const elapsed = require("elapsed-time-logger")
+const {filesize} = require('filesize')
 const http = require('http')
 const https = require('https')
 
@@ -23,16 +24,39 @@ const argv = minimist(process.argv.slice(2), {
     'dir': 'd',
     'output': 'o',
     'name': 'n',
+    'remove': 'r',
   },
-  string: ['font', 'base', 'string', 'dir', 'output', 'name'],
+  string: ['font', 'base', 'string', 'dir', 'output', 'name', 'remove'],
+  boolean: ['remove'],
   default: defaultArgv,
 })
 
-
-const log = console.log
 const bashChalk = chalk.hex('#c864c8')
-const pathChalk = (p) => chalk.yellow(p)
-const errorChalk = (msg) => log(chalk.red('❌ Failed to pick font:'), msg)
+const pathChalk = chalk.yellow
+const log = console.log
+const errorLog = (msg) => log(chalk.red('❌ Failed to pick font:'), msg)
+const getSize = (size) => {
+    const _size = filesize(size)
+    if(size > 1024 * 1000) {
+      return chalk.red(_size)
+    } else if(size > 1024 * 50)  {
+      return chalk.yellow(_size)
+    } else {
+      return chalk.green(_size)
+    }
+}
+const isPathUrl = s => /^http(s)?/.test(s)
+
+const getSizeByPath = (path) => isPathUrl(path) ? '' : getSize(fs.statSync(path).size)
+
+
+const parseFont = (p) => isPathUrl(p) ? {
+    path: p,
+    loadFont: loadFontFromUrl,
+  } : {
+    path: path.resolve(argv.dir, p),
+    loadFont: opentype.load
+  }
 
 function loadFontFromUrl(url) {
   return new Promise((resolve, reject) => {
@@ -46,7 +70,6 @@ function loadFontFromUrl(url) {
       })
       res.on('end', function() {
         const buffer = Buffer.concat(chunks)
-        console.log(111, buffer)
         const font = opentype.parse(buffer.buffer)
         resolve(font)
       })
@@ -67,18 +90,6 @@ function loadFontFromUrl(url) {
   })
 }
 
-const isPathUrl = s => /^http(s)?/.test(s)
-
-const parseFont = (p) => isPathUrl(p) ? {
-    path: p,
-    loadFont: loadFontFromUrl,
-  } : {
-    path: path.resolve(argv.dir, p),
-    loadFont: opentype.load
-  }
-
-
-
 function parsePath(p) {
   const names =  path.basename(p).split('.')
   const ext = names.pop()
@@ -95,39 +106,63 @@ async function pick() {
 
     const {path: fontPath, loadFont} = parseFont(argv.font)
     const {name: fontName, ext} = parsePath(fontPath)
+    log('fontPath:', pathChalk(argv.font), getSizeByPath(fontPath))
 
-    log('fontPath:', pathChalk(argv.font))
     const font = await loadFont(fontPath)
     const filterString = [...new Set(argv.string.replace(/\s/g, '').split(''))].join('')
-    const stringGlyphs = font.stringToGlyphs(filterString)
+    const stringGlyphs =  font.stringToGlyphs(filterString)
 
     const create = (glyphs = []) => {
-      // add .notdef glyphs
-      const notdefGlyphs = font.glyphs.glyphs['0']
-      if(notdefGlyphs && notdefGlyphs.name === '.notdef') glyphs.unshift(notdefGlyphs)
 
+      if(glyphs[0].name !== '.notdef') {
+        // add .notdef glyphs
+        const notdefGlyph = font.glyphs.glyphs['0']
+        if(notdefGlyph && notdefGlyph.name === '.notdef') glyphs.unshift(notdefGlyph)
+      }
+    
       const pickedFont = new opentype.Font({
         familyName: font.names.fontFamily.en,
         styleName: font.names.fontSubfamily.en,
         unitsPerEm: 1000,
         ascender: 800,
         descender: -200,
-        glyphs,
+        glyphs
       })
 
       const outputDir = path.resolve(argv.dir, argv.output)
       const outputBaseName = `${argv.name || fontName}.${ext}`
       const outputPath = path.join(outputDir, outputBaseName)
-      log('outputPath:', chalk.yellow(outputPath))
-
+      
       if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir)
-
+      
       fs.writeFileSync(outputPath, Buffer.from(pickedFont.toArrayBuffer()))
+      log('outputPath:', pathChalk(path.join(argv.output, outputBaseName)), getSizeByPath(outputPath))
     }
 
-    if(argv.base) {
+    if(argv.remove) {
+      const filterGlyphs = []
+      const nameUnicodeMap = {}
+
+      for (const key in stringGlyphs) {
+        if (Object.hasOwnProperty.call(stringGlyphs, key)) {
+            const glyph = stringGlyphs[key]
+            nameUnicodeMap[glyph.name] = glyph.unicode
+        }
+      }
+
+      const fontGlyphsObject = font.glyphs.glyphs
+      for (const key in fontGlyphsObject) {
+        if (Object.hasOwnProperty.call(fontGlyphsObject, key)) {
+            const glyph = fontGlyphsObject[key]
+            if(Object.hasOwnProperty.call(nameUnicodeMap, glyph.name)) continue
+            nameUnicodeMap[glyph.name] = glyph.unicode
+            filterGlyphs.push(glyph)
+        }
+      }
+      create(filterGlyphs)
+    } else if(argv.base) {
       const {path: basePath, loadFont: loadBase} = parseFont(argv.base)
-      log('basePath:', chalk.yellow(argv.base))
+      log('basePath:', pathChalk(argv.base), getSizeByPath(basePath))
       const base = await loadBase(basePath)
 
       const mergedGlyphs = []
@@ -137,13 +172,14 @@ async function pick() {
       for (const key in baseGlyphsObject) {
           if (Object.hasOwnProperty.call(baseGlyphsObject, key)) {
               const glyph = baseGlyphsObject[key]
+              if(Object.hasOwnProperty.call(nameUnicodeMap, glyph.name)) continue
               nameUnicodeMap[glyph.name] = glyph.unicode
               mergedGlyphs.push(glyph)
           }
       }
 
       for (sg  of stringGlyphs) {
-        if(nameUnicodeMap[sg.name]) continue
+        if(Object.hasOwnProperty.call(nameUnicodeMap, sg.name)) continue
         nameUnicodeMap[sg.name] = sg.unicode
         mergedGlyphs.push(sg)
       }
@@ -154,36 +190,26 @@ async function pick() {
     }
     progressElapsedTimer.end(chalk.green('✅ Pick font successfully!'))
   } catch (error) {
-    errorChalk(error)
+    errorLog(error)
   }
 }
+
 
 // process
 if(argv.help) {
   log(`${chalk.green('🗂️ Usage:')}`)
-  log(`  ${bashChalk('fp --help')} // Print help information`)
-  log(`  ${bashChalk('fp -s ')}${bashChalk.italic('0123')} // The string that needs to be picked`)
-  log(`  ${bashChalk('fp -f ')}${bashChalk.italic('./font.ttf')} // Full font package path, the default option is ${defaultArgv.font}`)
-  log(`  ${bashChalk('fp -b ')}${bashChalk.italic('./base.ttf')} // Basic font package path, new fonts will be based on this font package`)
-  log(`  ${bashChalk('fp -d ')}${bashChalk.italic('./font')} // Directory where font packages are looked up and generated, the default option is the current working directory`)
-  log(`  ${bashChalk('fp -o ')}${bashChalk.italic('./font-pick')} // Directory where the font package is generated,  the default option is ${defaultArgv.output}`)
-  log(`  ${bashChalk('fp -n ')}${bashChalk.italic('font')} // The name of the generated font package, the default option is the basename of the font option`)
+  log(`  ${bashChalk('font-pick --help')} // Print help information`)
+  log(`  ${bashChalk('font-pick -s ')}${bashChalk.italic('0123')} // The string that needs to be picked`)
+  log(`  ${bashChalk('font-pick -f ')}${bashChalk.italic('./font.ttf')} // Full font package path, the default option is ${defaultArgv.font}`)
+  log(`  ${bashChalk('font-pick -b ')}${bashChalk.italic('./base.ttf')} // Basic font package path, new fonts will be based on this font package`)
+  log(`  ${bashChalk('font-pick -d ')}${bashChalk.italic('./font')} // Directory where font packages are looked up and generated, the default option is the current working directory`)
+  log(`  ${bashChalk('font-pick -o ')}${bashChalk.italic('./font-pick')} // Directory where the font package is generated,  the default option is ${defaultArgv.output}`)
+  log(`  ${bashChalk('font-pick -n ')}${bashChalk.italic('font')} // The name of the generated font package, the default option is the basename of the font option`)
   process.exit(0)
 } else if(!argv.string) {
-  errorChalk(`Parameter [string] is required! Run "${bashChalk("fp --help")}" to learn more`)
+  errorLog(`Parameter [string] is required! Run "${bashChalk("font-pick --help")}" to learn more`)
   process.exit(-1)
 } else {
   pick()
 }
-
-
-// ttf ✅ ttf(http) ✅  ttf(https) ✅
-// otf ✅ otf(http) ✅  otf(https) ✅
-// woff ✅  woff(http) ❌ woff(https)  ❌ 
-// woff2 ❌  woff2(http) ❌ woff2(https)  ❌ 
-
-// 使用 https://fontconverter.com/zh/
-
-
-
 

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tools · 让生活更简单</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #171a21;
+      --line: #2a2f3a;
+      --text: #e8eaed;
+      --muted: #8b919d;
+      --accent: #7ee0b0;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: "SF Pro Text", "PingFang SC", "Hiragino Sans GB", sans-serif;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, #1c2a24 0%, transparent 55%),
+        var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 48px 24px 80px; }
+    header { margin-bottom: 40px; }
+    h1 { font-size: 28px; font-weight: 650; letter-spacing: -0.03em; margin: 0 0 8px; }
+    .sub { color: var(--muted); font-size: 14px; }
+    .status { color: var(--muted); font-size: 13px; margin: 24px 0; }
+    .status.error { color: #ff8a8a; }
+    section { margin-bottom: 36px; }
+    .cat {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--muted);
+      text-transform: none;
+      letter-spacing: 0.04em;
+      margin-bottom: 12px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    a.card {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px 16px 14px;
+      transition: border-color .15s, transform .15s;
+    }
+    a.card:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .name { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+    .desc { font-size: 13px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Tools</h1>
+      <div class="sub">让生活更简单</div>
+    </header>
+    <div id="status" class="status">正在加载配置…</div>
+    <main id="app"></main>
+  </div>
+  <script>
+    const CONFIG_URL = "https://api.npoint.io/84ba574d2570e44c924b";
+    const app = document.getElementById("app");
+    const statusEl = document.getElementById("status");
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function render(data) {
+      const groups = Array.isArray(data && data.config) ? data.config : [];
+      if (!groups.length) {
+        statusEl.textContent = "配置为空";
+        return;
+      }
+      statusEl.remove();
+      app.innerHTML = groups.map((g) => {
+        const tools = Array.isArray(g.tools) ? g.tools : [];
+        const cards = tools.map((t) => `
+          <a class="card" href="${escapeHtml(t.url || "#")}" target="_blank" rel="noopener noreferrer">
+            <div class="name">${escapeHtml(t.name || "未命名")}</div>
+            <div class="desc">${escapeHtml(t.desc || "")}</div>
+          </a>
+        `).join("");
+        return `
+          <section>
+            <div class="cat">${escapeHtml(g.icon || "")} ${escapeHtml(g.category || "未分类")}</div>
+            <div class="grid">${cards}</div>
+          </section>
+        `;
+      }).join("");
+    }
+
+    fetch(CONFIG_URL)
+      .then((r) => {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(render)
+      .catch((e) => {
+        statusEl.classList.add("error");
+        statusEl.textContent = "配置加载失败：" + e.message;
+      });
+  </script>
+</body>
+</html>

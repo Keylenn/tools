@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="format-detection" content="telephone=no">
+    <title>Markdown 预览</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.7.0/build/styles/github.min.css">
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.7.0/build/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <style>
+        :root {
+            --bg: #f5f6f8;
+            --panel: #ffffff;
+            --border: #ebebeb;
+            --primary: #1677ff;
+            --primary-press: #0958d9;
+            --text: #1a1a1a;
+            --text-2: #8c8c8c;
+            --radius: 12px;
+            --header-h: 48px;
+            --tabs-h: 44px;
+            --dock-h: 56px;
+            --safe-t: env(safe-area-inset-top, 0px);
+            --safe-b: env(safe-area-inset-bottom, 0px);
+            --app-h: 100dvh;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+        html, body {
+            height: 100%;
+            height: 100dvh;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+        }
+
+        body { overscroll-behavior: none; }
+
+        button {
+            font-family: inherit;
+            appearance: none;
+            -webkit-appearance: none;
+            border: none;
+            background: none;
+            color: inherit;
+            cursor: pointer;
+        }
+
+        .app {
+            height: var(--app-h);
+            display: flex;
+            flex-direction: column;
+            padding-top: var(--safe-t);
+        }
+
+        header {
+            height: var(--header-h);
+            padding: 0 16px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        h1 { font-size: 17px; font-weight: 600; letter-spacing: 0.02em; }
+
+        .header-actions { display: none; gap: 8px; }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            min-height: 36px;
+            padding: 0 14px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            background: #f5f5f5;
+            color: var(--text);
+            transition: transform 0.12s ease, opacity 0.12s ease, background 0.12s ease;
+        }
+
+        .btn:active { transform: scale(0.96); opacity: 0.85; }
+        .btn-primary { background: var(--primary); color: #fff; }
+        .btn-primary:active { background: var(--primary-press); }
+        .btn:disabled { opacity: 0.5; pointer-events: none; }
+
+        .tabs {
+            display: flex;
+            flex-shrink: 0;
+            padding: 8px 16px 0;
+            background: var(--panel);
+            gap: 4px;
+        }
+
+        .tabs button {
+            flex: 1;
+            height: 36px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-2);
+            position: relative;
+        }
+
+        .tabs button.active {
+            color: var(--primary);
+            background: rgba(22, 119, 255, 0.08);
+            font-weight: 600;
+        }
+
+        .container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            position: relative;
+            min-height: 0;
+        }
+
+        .pane {
+            flex: 1;
+            min-width: 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            background: var(--panel);
+            position: relative;
+        }
+
+        textarea {
+            flex: 1;
+            width: 100%;
+            padding: 16px;
+            border: none;
+            outline: none;
+            resize: none;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 16px;
+            line-height: 1.7;
+            background: var(--panel);
+            color: var(--text);
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .drop-overlay {
+            position: absolute;
+            inset: 8px;
+            background: rgba(22, 119, 255, 0.08);
+            border: 1.5px dashed var(--primary);
+            border-radius: var(--radius);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            font-size: 15px;
+            color: var(--primary);
+            font-weight: 600;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .preview-pane {
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+            padding: 16px;
+            background: var(--panel);
+        }
+
+        .markdown-body {
+            font-size: 16px;
+            line-height: 1.75;
+            word-wrap: break-word;
+            overflow-wrap: anywhere;
+            max-width: 800px;
+            margin: 0 auto;
+            padding-bottom: 24px;
+        }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3 { margin-top: 1.4em; margin-bottom: 0.6em; font-weight: 600; }
+        .markdown-body h1 { font-size: 1.6em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+        .markdown-body h2 { font-size: 1.3em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+        .markdown-body h3 { font-size: 1.1em; }
+        .markdown-body p { margin-bottom: 12px; }
+        .markdown-body ul, .markdown-body ol { padding-left: 1.4em; margin-bottom: 12px; }
+        .markdown-body code {
+            background: rgba(175,184,193,0.2);
+            padding: 0.15em 0.4em;
+            border-radius: 4px;
+            font-size: 85%;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        }
+        .markdown-body pre {
+            background: #f6f8fa;
+            padding: 12px;
+            border-radius: 8px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin-bottom: 12px;
+        }
+        .markdown-body pre code { background: none; padding: 0; }
+        .markdown-body blockquote {
+            border-left: 3px solid #d0d7de;
+            padding: 0 12px;
+            color: #59636e;
+            margin-bottom: 12px;
+        }
+        .markdown-body img { max-width: 100%; border-radius: 8px; }
+        .markdown-body table { border-collapse: collapse; width: 100%; margin-bottom: 12px; display: block; overflow-x: auto; }
+        .markdown-body table th, .markdown-body table td { border: 1px solid #d0d7de; padding: 6px 10px; }
+        .markdown-body table tr:nth-child(2n) { background: #f6f8fa; }
+        .markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+
+        .dock {
+            display: flex;
+            flex-shrink: 0;
+            background: var(--panel);
+            border-top: 1px solid var(--border);
+            padding: 8px 16px calc(8px + var(--safe-b));
+            gap: 10px;
+        }
+
+        .dock .btn {
+            flex: 1;
+            min-height: 44px;
+            font-size: 15px;
+            border-radius: 10px;
+        }
+
+        .toast {
+            position: fixed;
+            left: 50%;
+            bottom: calc(88px + var(--safe-b));
+            transform: translateX(-50%) translateY(12px);
+            background: rgba(0, 0, 0, 0.78);
+            color: #fff;
+            padding: 10px 18px;
+            border-radius: 20px;
+            font-size: 14px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            z-index: 100;
+            max-width: 80vw;
+            text-align: center;
+        }
+
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        .mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.45);
+            display: none;
+            align-items: flex-end;
+            z-index: 80;
+        }
+
+        .mask.show { display: flex; }
+
+        .sheet {
+            width: 100%;
+            background: var(--panel);
+            border-radius: 16px 16px 0 0;
+            padding: 12px 16px calc(16px + var(--safe-b));
+            transform: translateY(100%);
+            transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+            max-height: 85dvh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .mask.show .sheet { transform: translateY(0); }
+
+        .sheet-handle {
+            width: 36px;
+            height: 4px;
+            background: #ddd;
+            border-radius: 2px;
+            margin: 0 auto 12px;
+        }
+
+        .sheet h2 { font-size: 16px; text-align: center; margin-bottom: 12px; }
+
+        .sheet-preview {
+            flex: 1;
+            overflow: auto;
+            -webkit-overflow-scrolling: touch;
+            background: #f5f6f8;
+            border-radius: 10px;
+            min-height: 160px;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+        }
+
+        .sheet-preview img { width: 100%; display: block; }
+
+        .sheet-tip {
+            font-size: 12px;
+            color: var(--text-2);
+            text-align: center;
+            margin: 10px 0 12px;
+        }
+
+        .sheet-actions { display: flex; gap: 10px; }
+        .sheet-actions .btn { flex: 1; min-height: 44px; }
+
+        .loading {
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.55);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 90;
+            flex-direction: column;
+            gap: 10px;
+            font-size: 14px;
+            color: var(--text-2);
+        }
+
+        .loading.show { display: flex; }
+
+        .spinner {
+            width: 28px;
+            height: 28px;
+            border: 3px solid #e6e6e6;
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .kb-open .dock, .kb-open .tabs { display: none; }
+
+        @media (max-width: 768px) {
+            .editor-pane, .preview-pane {
+                position: absolute;
+                inset: 0;
+                width: 100%;
+                transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease;
+            }
+            .app[data-tab="edit"] .preview-pane { transform: translateX(12%); opacity: 0; pointer-events: none; }
+            .app[data-tab="preview"] .editor-pane { transform: translateX(-12%); opacity: 0; pointer-events: none; }
+            .app[data-tab="edit"] .editor-pane { transform: translateX(0); opacity: 1; }
+            .app[data-tab="preview"] .preview-pane { transform: translateX(0); opacity: 1; }
+        }
+
+        @media (min-width: 769px) {
+            :root { --header-h: 56px; }
+            .tabs, .dock { display: none !important; }
+            .header-actions { display: flex; }
+            .container { flex-direction: row; }
+            .editor-pane { border-right: 1px solid var(--border); }
+            .preview-pane { padding: 28px; }
+            textarea { font-size: 14px; padding: 20px; }
+            .markdown-body { font-size: 15px; }
+            .toast { bottom: 32px; }
+        }
+    </style>
+</head>
+<body>
+<div class="app" id="app" data-tab="edit">
+    <header>
+        <h1>MD 预览</h1>
+        <div class="header-actions">
+            <button class="btn" type="button" id="uploadBtnDesk">上传文件</button>
+            <button class="btn btn-primary" type="button" id="exportBtnDesk">导出图片</button>
+        </div>
+    </header>
+
+    <nav class="tabs" id="tabs">
+        <button type="button" class="active" data-tab="edit">编辑</button>
+        <button type="button" data-tab="preview">预览</button>
+    </nav>
+
+    <main class="container" id="container">
+        <section class="pane editor-pane" id="editorPane">
+            <textarea id="mdInput" placeholder="粘贴 Markdown，或点底部「上传」导入文件"></textarea>
+            <div class="drop-overlay" id="dropOverlay">松开以上传</div>
+        </section>
+        <section class="pane preview-pane" id="previewPane">
+            <div id="preview" class="markdown-body"></div>
+        </section>
+    </main>
+
+    <footer class="dock">
+        <button class="btn" type="button" id="uploadBtn">上传文件</button>
+        <button class="btn btn-primary" type="button" id="exportBtn">导出图片</button>
+    </footer>
+</div>
+
+<input type="file" id="fileInput" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden>
+
+<div class="toast" id="toast"></div>
+<div class="loading" id="loading">
+    <div class="spinner"></div>
+    <span>正在生成图片…</span>
+</div>
+<div class="mask" id="mask">
+    <div class="sheet" id="sheet">
+        <div class="sheet-handle"></div>
+        <h2>长按图片保存</h2>
+        <div class="sheet-preview"><img id="sheetImg" alt="预览图"></div>
+        <p class="sheet-tip">iOS / 微信内可长按保存到相册</p>
+        <div class="sheet-actions">
+            <button class="btn" type="button" id="sheetClose">关闭</button>
+            <button class="btn btn-primary" type="button" id="sheetShare">分享 / 下载</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    marked.setOptions({
+        highlight: function(code, lang) {
+            if (lang && hljs.getLanguage(lang)) {
+                try { return hljs.highlight(code, { language: lang }).value; } catch (e) {}
+            }
+            return hljs.highlightAuto(code).value;
+        },
+        breaks: true,
+        gfm: true
+    });
+
+    const app = document.getElementById('app');
+    const mdInput = document.getElementById('mdInput');
+    const preview = document.getElementById('preview');
+    const fileInput = document.getElementById('fileInput');
+    const editorPane = document.getElementById('editorPane');
+    const dropOverlay = document.getElementById('dropOverlay');
+    const toastEl = document.getElementById('toast');
+    const loadingEl = document.getElementById('loading');
+    const mask = document.getElementById('mask');
+    const sheetImg = document.getElementById('sheetImg');
+    const tabs = document.getElementById('tabs');
+
+    let lastBlob = null;
+    let toastTimer = 0;
+
+    function isMobile() {
+        return window.matchMedia('(max-width: 768px)').matches;
+    }
+
+    function toast(msg) {
+        toastEl.textContent = msg;
+        toastEl.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
+    }
+
+    function setTab(name) {
+        app.dataset.tab = name;
+        tabs.querySelectorAll('button').forEach((b) => {
+            b.classList.toggle('active', b.dataset.tab === name);
+        });
+        if (name === 'edit') mdInput.focus({ preventScroll: true });
+        else mdInput.blur();
+    }
+
+    function renderMarkdown() {
+        preview.innerHTML = marked.parse(mdInput.value || '');
+    }
+
+    mdInput.addEventListener('input', renderMarkdown);
+
+    tabs.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-tab]');
+        if (btn) setTab(btn.dataset.tab);
+    });
+
+    function pickFile() { fileInput.click(); }
+    document.getElementById('uploadBtn').addEventListener('click', pickFile);
+    document.getElementById('uploadBtnDesk').addEventListener('click', pickFile);
+
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) readFile(file);
+        e.target.value = '';
+    });
+
+    function readFile(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            mdInput.value = e.target.result;
+            renderMarkdown();
+            if (isMobile()) setTab('preview');
+            toast('已导入 ' + file.name);
+        };
+        reader.readAsText(file);
+    }
+
+    let dragCounter = 0;
+    editorPane.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        dragCounter++;
+        dropOverlay.style.display = 'flex';
+    });
+    editorPane.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dragCounter--;
+        if (dragCounter === 0) dropOverlay.style.display = 'none';
+    });
+    editorPane.addEventListener('dragover', (e) => e.preventDefault());
+    editorPane.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragCounter = 0;
+        dropOverlay.style.display = 'none';
+        const files = e.dataTransfer.files;
+        if (files.length > 0) readFile(files[0]);
+    });
+
+    let touchX = 0;
+    let touchY = 0;
+    let swiping = false;
+    const container = document.getElementById('container');
+    container.addEventListener('touchstart', (e) => {
+        if (!isMobile() || e.touches.length !== 1) return;
+        touchX = e.touches[0].clientX;
+        touchY = e.touches[0].clientY;
+        swiping = true;
+    }, { passive: true });
+    container.addEventListener('touchend', (e) => {
+        if (!swiping) return;
+        swiping = false;
+        const dx = e.changedTouches[0].clientX - touchX;
+        const dy = e.changedTouches[0].clientY - touchY;
+        if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+        if (dx < 0 && app.dataset.tab === 'edit') setTab('preview');
+        else if (dx > 0 && app.dataset.tab === 'preview') setTab('edit');
+    }, { passive: true });
+
+    document.getElementById('exportBtn').addEventListener('click', downloadImage);
+    document.getElementById('exportBtnDesk').addEventListener('click', downloadImage);
+
+    async function downloadImage() {
+        if (!mdInput.value.trim()) {
+            toast('请先输入内容');
+            return;
+        }
+        if (isMobile()) setTab('preview');
+        loadingEl.classList.add('show');
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+        try {
+            const target = preview;
+            const originalHeight = target.style.height;
+            target.style.height = 'auto';
+
+            const canvas = await html2canvas(target, {
+                scale: Math.min(2, window.devicePixelRatio || 2),
+                useCORS: true,
+                backgroundColor: '#ffffff',
+                logging: false,
+                width: target.scrollWidth,
+                height: target.scrollHeight
+            });
+
+            target.style.height = originalHeight;
+
+            lastBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+            const url = URL.createObjectURL(lastBlob);
+            sheetImg.onload = () => URL.revokeObjectURL(url);
+            sheetImg.src = url;
+
+            if (isMobile()) {
+                mask.classList.add('show');
+            } else {
+                triggerDownload(lastBlob);
+                toast('已开始下载');
+            }
+        } catch (err) {
+            console.error(err);
+            toast('生成失败，可能是图片跨域');
+        } finally {
+            loadingEl.classList.remove('show');
+        }
+    }
+
+    function triggerDownload(blob) {
+        const link = document.createElement('a');
+        link.download = 'markdown-preview-' + Date.now() + '.png';
+        link.href = URL.createObjectURL(blob);
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 2000);
+    }
+
+    document.getElementById('sheetClose').addEventListener('click', () => mask.classList.remove('show'));
+    mask.addEventListener('click', (e) => {
+        if (e.target === mask) mask.classList.remove('show');
+    });
+
+    document.getElementById('sheetShare').addEventListener('click', async () => {
+        if (!lastBlob) return;
+        const file = new File([lastBlob], 'markdown-preview.png', { type: 'image/png' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            try {
+                await navigator.share({ files: [file], title: 'Markdown 预览' });
+                return;
+            } catch (e) {
+                if (e.name === 'AbortError') return;
+            }
+        }
+        triggerDownload(lastBlob);
+        toast('已尝试下载，也可长按图片保存');
+    });
+
+    if (window.visualViewport) {
+        const syncKb = () => {
+            const kb = window.innerHeight - visualViewport.height > 80;
+            document.body.classList.toggle('kb-open', kb && isMobile());
+            document.documentElement.style.setProperty('--app-h', visualViewport.height + 'px');
+        };
+        visualViewport.addEventListener('resize', syncKb);
+        visualViewport.addEventListener('scroll', syncKb);
+    }
+
+    mdInput.value = `# 欢迎使用 Markdown 预览
+
+支持 **实时预览** 和 **导出图片**。
+
+## 功能
+- 左右滑动切换编辑 / 预览
+- 上传或粘贴 Markdown
+- 导出高清 PNG（手机可长按保存）
+
+\`\`\`javascript
+function hello() {
+  console.log("Hello, Markdown!");
+}
+\`\`\`
+
+> 底部「上传文件」导入，或直接粘贴内容。
+`;
+    renderMarkdown();
+</script>
+</body>
+</html>

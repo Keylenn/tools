@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="format-detection" content="telephone=no">
     <title>Markdown 预览</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.7.0/build/styles/github.min.css">
     <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.7.0/build/highlight.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -190,6 +190,8 @@
         .markdown-body h2 { font-size: 1.3em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
         .markdown-body h3 { font-size: 1.1em; }
         .markdown-body p { margin-bottom: 12px; }
+        .markdown-body strong { font-weight: 700; }
+        .markdown-body em { font-style: italic; }
         .markdown-body ul, .markdown-body ol { padding-left: 1.4em; margin-bottom: 12px; }
         .markdown-body code {
             background: rgba(175,184,193,0.2);
@@ -199,12 +201,26 @@
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         }
         .markdown-body pre {
+            position: relative;
             background: #f6f8fa;
             padding: 12px;
             border-radius: 8px;
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
             margin-bottom: 12px;
+        }
+        .markdown-body pre[data-lang] { padding-top: 32px; }
+        .markdown-body pre[data-lang]::before {
+            content: attr(data-lang);
+            position: absolute;
+            top: 8px;
+            right: 10px;
+            font-size: 11px;
+            font-weight: 500;
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+            color: #8c8c8c;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
         }
         .markdown-body pre code { background: none; padding: 0; }
         .markdown-body blockquote {
@@ -218,6 +234,32 @@
         .markdown-body table th, .markdown-body table td { border: 1px solid #d0d7de; padding: 6px 10px; }
         .markdown-body table tr:nth-child(2n) { background: #f6f8fa; }
         .markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+        .markdown-body > :first-child { margin-top: 0; }
+        .markdown-body > :last-child { margin-bottom: 0; }
+
+        .export-capture {
+            position: fixed;
+            left: 0;
+            top: 0;
+            z-index: -1;
+            width: 720px;
+            max-width: 720px;
+            margin: 0;
+            padding: 48px 52px 56px;
+            background: #ffffff;
+            overflow: visible;
+            pointer-events: none;
+        }
+        .export-capture pre {
+            overflow: visible;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .export-capture table {
+            display: table;
+            width: 100%;
+            overflow: visible;
+        }
 
         .dock {
             display: flex;
@@ -422,15 +464,53 @@
 
 <script>
     marked.setOptions({
-        highlight: function(code, lang) {
-            if (lang && hljs.getLanguage(lang)) {
-                try { return hljs.highlight(code, { language: lang }).value; } catch (e) {}
-            }
-            return hljs.highlightAuto(code).value;
-        },
+        gfm: true,
         breaks: true,
-        gfm: true
+        pedantic: false,
+        smartLists: true
     });
+
+    const LANG_ALIASES = {
+        html: 'xml', htm: 'xml', svg: 'xml', vue: 'xml', xml: 'xml',
+        js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
+        ts: 'typescript', tsx: 'typescript',
+        md: 'markdown', markdown: 'markdown',
+        sh: 'bash', zsh: 'bash', shell: 'bash', bash: 'bash',
+        yml: 'yaml', py: 'python', rb: 'ruby', rs: 'rust',
+        kt: 'kotlin', cs: 'csharp', docker: 'dockerfile',
+        txt: 'plaintext', text: 'plaintext'
+    };
+    const LANG_LABELS = {
+        javascript: 'JS', js: 'JS',
+        typescript: 'TS', ts: 'TS',
+        xml: 'HTML', html: 'HTML',
+        markdown: 'MD', md: 'MD',
+        bash: 'Bash', sh: 'Bash', shell: 'Bash', zsh: 'Zsh',
+        python: 'Python', py: 'Python',
+        json: 'JSON', css: 'CSS', yaml: 'YAML', yml: 'YAML'
+    };
+
+    function resolveLang(name) {
+        const key = String(name || '').trim().toLowerCase();
+        if (!key) return '';
+        const mapped = LANG_ALIASES[key] || key;
+        return hljs.getLanguage(mapped) ? mapped : '';
+    }
+
+    function displayLang(name, resolved) {
+        const key = String(name || resolved || '').toLowerCase();
+        return LANG_LABELS[key] || (name || resolved || '').toUpperCase();
+    }
+
+    function highlightCode(code, langHint) {
+        const lang = resolveLang(langHint);
+        try {
+            if (lang) return hljs.highlight(code, { language: lang, ignoreIllegals: true });
+            return hljs.highlightAuto(code);
+        } catch (e) {
+            return { value: '', language: '' };
+        }
+    }
 
     const app = document.getElementById('app');
     const mdInput = document.getElementById('mdInput');
@@ -467,8 +547,26 @@
         else mdInput.blur();
     }
 
+    function normalizeMd(text) {
+        return String(text || '')
+            .replace(/[\uFF0A\u2217\u204E\uFE61]/g, '*')
+            .replace(/[\uFF3F]/g, '_');
+    }
+
     function renderMarkdown() {
-        preview.innerHTML = marked.parse(mdInput.value || '');
+        preview.innerHTML = marked.parse(normalizeMd(mdInput.value));
+        preview.querySelectorAll('pre code').forEach((el) => {
+            const pre = el.parentElement;
+            const cls = [...el.classList].find((c) => c.startsWith('language-'));
+            const hint = cls ? cls.slice(9) : '';
+            const result = highlightCode(el.textContent, hint);
+            if (result.value) el.innerHTML = result.value;
+            const lang = result.language || resolveLang(hint);
+            el.classList.add('hljs');
+            if (lang) el.classList.add('language-' + lang);
+            const label = displayLang(hint, lang);
+            if (label) pre.dataset.lang = label;
+        });
     }
 
     mdInput.addEventListener('input', renderMarkdown);
@@ -551,21 +649,22 @@
         loadingEl.classList.add('show');
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-        try {
-            const target = preview;
-            const originalHeight = target.style.height;
-            target.style.height = 'auto';
+        const target = document.createElement('div');
+        target.className = 'markdown-body export-capture';
+        target.innerHTML = preview.innerHTML;
+        document.body.appendChild(target);
 
+        try {
             const canvas = await html2canvas(target, {
                 scale: Math.min(2, window.devicePixelRatio || 2),
                 useCORS: true,
                 backgroundColor: '#ffffff',
                 logging: false,
                 width: target.scrollWidth,
-                height: target.scrollHeight
+                height: target.scrollHeight,
+                windowWidth: target.scrollWidth,
+                windowHeight: target.scrollHeight
             });
-
-            target.style.height = originalHeight;
 
             lastBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
             const url = URL.createObjectURL(lastBlob);
@@ -582,6 +681,7 @@
             console.error(err);
             toast('生成失败，可能是图片跨域');
         } finally {
+            target.remove();
             loadingEl.classList.remove('show');
         }
     }
@@ -624,23 +724,7 @@
         visualViewport.addEventListener('scroll', syncKb);
     }
 
-    mdInput.value = `# 欢迎使用 Markdown 预览
-
-支持 **实时预览** 和 **导出图片**。
-
-## 功能
-- 左右滑动切换编辑 / 预览
-- 上传或粘贴 Markdown
-- 导出高清 PNG（手机可长按保存）
-
-\`\`\`javascript
-function hello() {
-  console.log("Hello, Markdown!");
-}
-\`\`\`
-
-> 底部「上传文件」导入，或直接粘贴内容。
-`;
+    mdInput.value = '';
     renderMarkdown();
 </script>
 </body>

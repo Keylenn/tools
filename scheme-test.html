@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App URL Scheme 测试工具</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f7fa;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            width: 100%;
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+            padding: 32px;
+        }
+        h1 {
+            font-size: 22px;
+            color: #1a1a2e;
+            margin-bottom: 8px;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 28px;
+        }
+        .form-group {
+            margin-bottom: 18px;
+        }
+        label {
+            display: block;
+            font-weight: 600;
+            font-size: 15px;
+            color: #333;
+            margin-bottom: 6px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 16px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input[type="text"]:focus {
+            border-color: #007aff;
+        }
+        .btn-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        .btn {
+            flex: 1;
+            min-width: 120px;
+            padding: 12px 20px;
+            font-size: 16px;
+            font-weight: 500;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+        .btn-primary {
+            background: #007aff;
+            color: #fff;
+        }
+        .btn-primary:hover { opacity: 0.88; }
+        .btn-secondary {
+            background: #e9ecef;
+            color: #333;
+        }
+        .btn-secondary:hover { background: #dee2e6; }
+        .result-area {
+            margin-top: 24px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 4px solid #ccc;
+            min-height: 80px;
+            word-break: break-all;
+        }
+        .result-success {
+            border-left-color: #34c759;
+            background: #eafaf0;
+        }
+        .result-fail {
+            border-left-color: #ff3b30;
+            background: #fef0ef;
+        }
+        .result-info {
+            border-left-color: #007aff;
+            background: #eaf3ff;
+        }
+        .log-line {
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 4px;
+        }
+        .log-label {
+            font-weight: 700;
+            color: #555;
+        }
+        .note {
+            margin-top: 20px;
+            padding: 14px 18px;
+            background: #fffbe6;
+            border-radius: 10px;
+            border-left: 4px solid #ffcc02;
+            font-size: 13px;
+            color: #5a4a00;
+            line-height: 1.6;
+        }
+        .preset-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .preset-btn {
+            background: #f0f4ff;
+            border: 1px solid #c8d8f0;
+            border-radius: 8px;
+            padding: 6px 14px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.15s;
+            color: #0040aa;
+        }
+        .preset-btn:hover { background: #dce6ff; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📱 App URL Scheme 测试器</h1>
+    <p class="subtitle">在 iOS Safari 或 Android Chrome 中点击链接，测试能否唤起目标 App</p>
+
+    <div class="form-group">
+        <label for="schemeInput">URL Scheme</label>
+        <input type="text" id="schemeInput" placeholder="例如：weixin://" value="weixin://">
+        <div class="preset-grid">
+            <span class="preset-btn" data-scheme="weixin://">微信</span>
+            <span class="preset-btn" data-scheme="alipayqr://platformapi/startapp?saId=10000007">支付宝付款码</span>
+            <span class="preset-btn" data-scheme="taobao://item.taobao.com/item.htm?id=12345678">淘宝商品</span>
+            <span class="preset-btn" data-scheme="mqq://im/chat?chat_type=wpa&uin=10001">QQ 临时会话</span>
+            <span class="preset-btn" data-scheme="baidumap://map/navi?query=广州塔">百度地图导航</span>
+            <span class="preset-btn" data-scheme="bilibili://video//BV1gsY462Ean">B站视频</span>
+            <span class="preset-btn" data-scheme="myapp://open?page=profile">自定义 myapp://</span>
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label for="biliInput">B站视频链接</label>
+        <input type="text" id="biliInput" placeholder="粘贴 B 站链接或分享文案">
+        <div class="btn-row" style="margin-top: 8px;">
+            <button class="btn btn-secondary" id="parseBiliBtn" type="button">解析为 Scheme</button>
+        </div>
+    </div>
+
+    <div class="btn-row">
+        <button class="btn btn-primary" id="testBtn">▶ 测试唤起</button>
+        <button class="btn btn-secondary" id="clearBtn">清空结果</button>
+    </div>
+
+    <div class="result-area" id="resultArea">
+        <div class="log-line">👆 输入 Scheme 后点击「测试唤起」</div>
+        <div class="log-line" style="color:#888;">提示：App 被成功唤起 → 页面会自动切到后台（可能无日志）；若未安装则几秒后会弹出 fallback 提示。</div>
+    </div>
+
+    <div class="note">
+        ⚠️ <strong>注意事项</strong><br>
+        • 部分 App 的 Scheme 需要完整路径（如支付宝收款码需特定参数）。<br>
+        • 某些系统（iOS 12+）或浏览器可能限制 Scheme 自动跳转，可尝试长按链接再打开。<br>
+        • 此页面使用 <code>window.location.href = scheme</code> 模拟点击跳转，最接近真实用户操作。<br>
+        • 若 App 未安装，部分 Scheme 会触发系统弹窗“无法打开”或跳转至 App Store / 应用市场。
+    </div>
+</div>
+
+<script>
+(function() {
+    const schemeInput = document.getElementById('schemeInput');
+    const testBtn = document.getElementById('testBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const resultArea = document.getElementById('resultArea');
+    const biliInput = document.getElementById('biliInput');
+    const parseBiliBtn = document.getElementById('parseBiliBtn');
+
+    // 预设按钮填充
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            schemeInput.value = this.dataset.scheme;
+            // 自动聚焦但不自动跳转
+            schemeInput.focus();
+            appendLog('info', `已填入 Scheme: ${this.dataset.scheme}`);
+        });
+    });
+
+    // 追加日志到结果区
+    function appendLog(type, message) {
+        // 移除占位提示
+        const placeholder = resultArea.querySelector('.placeholder');
+        if (placeholder) placeholder.remove();
+
+        const div = document.createElement('div');
+        div.className = 'log-line';
+        if (type === 'success') {
+            div.innerHTML = `✅ <span class="log-label">成功</span> — ${message}`;
+        } else if (type === 'fail') {
+            div.innerHTML = `❌ <span class="log-label">失败</span> — ${message}`;
+        } else if (type === 'info') {
+            div.innerHTML = `ℹ️ <span class="log-label">信息</span> — ${message}`;
+        } else if (type === 'action') {
+            div.innerHTML = `🔗 <span class="log-label">跳转</span> — ${message}`;
+        }
+        resultArea.appendChild(div);
+        // 滚动到底部
+        resultArea.scrollTop = resultArea.scrollHeight;
+        // 更新边框样式（根据最后一条日志）
+        updateBorderStyle(type);
+    }
+
+    function updateBorderStyle(lastType) {
+        resultArea.classList.remove('result-success', 'result-fail', 'result-info');
+        if (lastType === 'success') resultArea.classList.add('result-success');
+        else if (lastType === 'fail') resultArea.classList.add('result-fail');
+        else if (lastType === 'info' || lastType === 'action') resultArea.classList.add('result-info');
+    }
+
+    // 清空结果
+    function clearResult() {
+        resultArea.innerHTML = '';
+        resultArea.classList.remove('result-success', 'result-fail', 'result-info');
+        // 放回默认提示
+        const info = document.createElement('div');
+        info.className = 'log-line';
+        info.textContent = '👆 输入 Scheme 后点击「测试唤起」';
+        resultArea.appendChild(info);
+        const tip = document.createElement('div');
+        tip.className = 'log-line';
+        tip.style.color = '#888';
+        tip.textContent = '提示：App 被成功唤起 → 页面会自动切到后台（可能无日志）；若未安装则几秒后会弹出 fallback 提示。';
+        resultArea.appendChild(tip);
+    }
+
+    function extractBvid(text) {
+        const m = String(text).match(/BV[0-9A-Za-z]+/);
+        return m ? m[0] : '';
+    }
+
+    function extractBiliUrl(text) {
+        const m = String(text).match(/https?:\/\/(?:b23\.tv|bili2233\.cn|(?:[\w-]+\.)?bilibili\.com)\/[^\s]+/i);
+        return m ? m[0].replace(/[),.;，。】]+$/, '') : '';
+    }
+
+    function biliSchemeFromBvid(bvid) {
+        return `bilibili://video//${bvid}`;
+    }
+
+    async function resolveB23(url) {
+        try {
+            const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+            if (res.url && extractBvid(res.url)) return res.url;
+        } catch (_) {}
+        const proxy = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+        const res = await fetch(proxy, { method: 'GET', redirect: 'follow' });
+        const text = await res.text();
+        return res.url || text || '';
+    }
+
+    async function parseBiliLink() {
+        const raw = biliInput.value.trim();
+        if (!raw) {
+            appendLog('fail', '请输入 B 站视频链接（如 https://b23.tv/hU5AXHt）');
+            return;
+        }
+
+        parseBiliBtn.disabled = true;
+        appendLog('action', `正在解析: <strong>${escapeHtml(raw)}</strong>`);
+
+        try {
+            let bvid = extractBvid(raw);
+            const biliUrl = extractBiliUrl(raw);
+            if (!bvid && biliUrl && /b23\.tv|bili2233\.cn/i.test(biliUrl)) {
+                appendLog('info', '短链跳转中，正在解析 BV 号…');
+                const finalUrl = await resolveB23(biliUrl);
+                bvid = extractBvid(finalUrl);
+            } else if (!bvid && biliUrl) {
+                bvid = extractBvid(biliUrl);
+            }
+            if (!bvid) {
+                appendLog('fail', '未能从链接中解析出 BV 号');
+                return;
+            }
+            const scheme = biliSchemeFromBvid(bvid);
+            schemeInput.value = scheme;
+            schemeInput.focus();
+            appendLog('success', `已转换为 Scheme: <strong>${escapeHtml(scheme)}</strong>`);
+        } catch (e) {
+            appendLog('fail', `解析失败: ${escapeHtml(e.message || String(e))}（短链可能被 CORS 拦截，可粘贴完整 bilibili.com 链接）`);
+        } finally {
+            parseBiliBtn.disabled = false;
+        }
+    }
+
+    // 核心：测试 Scheme
+    function testScheme() {
+        const raw = schemeInput.value.trim();
+        if (!raw) {
+            appendLog('fail', '请输入一个 URL Scheme（如 weixin://）');
+            return;
+        }
+
+        // 简单校验是否包含 ://
+        if (!raw.includes('://')) {
+            appendLog('fail', `"${raw}" 看起来不像有效的 URL Scheme（缺少 ://）`);
+            return;
+        }
+
+        // 记录本次测试
+        appendLog('action', `正在尝试唤起: <strong>${escapeHtml(raw)}</strong>`);
+        appendLog('info', '如果 App 已安装，页面将切换到 App（此页面可能不可见）；否则请观察后续提示。');
+
+        // 方法1: location.href 跳转（最接近真实点击）
+        try {
+            window.location.href = raw;
+        } catch(e) {
+            appendLog('fail', `跳转异常: ${e.message}`);
+        }
+
+        // 方法2: 创建隐藏 iframe（备选，对某些 Scheme 更友好）
+        // 但为避免重复跳转，只用一个方法即可。这里使用 location.href 为主。
+        // 额外加一个计时 fallback 提示（5秒后如果页面还在，大概率没唤起成功）
+        setTimeout(() => {
+            // 如果页面仍然可见（未被 App 切走），可能是未安装或 Scheme 无效
+            // 但注意：有些 App 唤起后仍会保留页面（如微信打开后不关闭 Safari），所以这只是一个辅助提示
+            appendLog('info', '⏱ 检测：页面仍在显示，App 可能未安装或 Scheme 无效。可以尝试：');
+            appendLog('info', '  ① 检查 Scheme 拼写是否正确（区分大小写）');
+            appendLog('info', '  ② 确认手机上已安装对应 App');
+            appendLog('info', '  ③ 部分 App 需要完整的路径参数');
+        }, 3000);
+    }
+
+    // 简单的防 XSS
+    function escapeHtml(text) {
+        const d = document.createElement('div');
+        d.textContent = text;
+        return d.innerHTML;
+    }
+
+    // 绑定事件
+    testBtn.addEventListener('click', testScheme);
+    clearBtn.addEventListener('click', clearResult);
+    parseBiliBtn.addEventListener('click', parseBiliLink);
+    biliInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            parseBiliLink();
+        }
+    });
+
+    // 键盘快捷键 Ctrl+Enter / Cmd+Enter
+    document.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            testScheme();
+        }
+    });
+
+    // 初始状态：给个欢迎日志
+    clearResult();
+})();
+</script>
+</body>
+</html>

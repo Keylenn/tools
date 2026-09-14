@@ -256,7 +256,10 @@
     }
 
     function extractBvid(text) {
-        const m = String(text).match(/BV[0-9A-Za-z]+/);
+        const s = String(text);
+        const fromPath = s.match(/bilibili\.com\/video\/(BV[0-9A-Za-z]+)/i);
+        if (fromPath) return fromPath[1];
+        const m = s.match(/BV[0-9A-Za-z]{10,}/);
         return m ? m[0] : '';
     }
 
@@ -269,15 +272,35 @@
         return `bilibili://video//${bvid}`;
     }
 
-    async function resolveB23(url) {
+    async function fetchText(url, timeoutMs) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), timeoutMs || 8000);
         try {
-            const res = await fetch(url, { method: 'GET', redirect: 'follow' });
-            if (res.url && extractBvid(res.url)) return res.url;
-        } catch (_) {}
-        const proxy = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-        const res = await fetch(proxy, { method: 'GET', redirect: 'follow' });
-        const text = await res.text();
-        return res.url || text || '';
+            const res = await fetch(url, { signal: ctrl.signal });
+            if (!res.ok) throw new Error('http ' + res.status);
+            return await res.text();
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    async function resolveB23(url) {
+        const encoded = encodeURIComponent(url);
+        const sources = [
+            `https://unshorten.me/json/${url}`,
+            `https://unshorten.me/s/${url}`,
+            `https://api.redirect-checker.net/?url=${encoded}&timeout=5&maxhops=10&format=json`
+        ];
+        let lastErr;
+        for (const src of sources) {
+            try {
+                const text = await fetchText(src, 8000);
+                if (extractBvid(text)) return text;
+            } catch (e) {
+                lastErr = e;
+            }
+        }
+        throw lastErr || new Error('短链无法解析');
     }
 
     async function parseBiliLink() {
@@ -309,7 +332,7 @@
             schemeInput.focus();
             appendLog('success', `已转换为 Scheme: <strong>${escapeHtml(scheme)}</strong>`);
         } catch (e) {
-            appendLog('fail', `解析失败: ${escapeHtml(e.message || String(e))}（短链可能被 CORS 拦截，可粘贴完整 bilibili.com 链接）`);
+            appendLog('fail', `解析失败: ${escapeHtml(e.message || String(e))}（可粘贴完整 bilibili.com 链接）`);
         } finally {
             parseBiliBtn.disabled = false;
         }

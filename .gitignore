@@ -1,4 +1,5 @@
 
 .DS_Store
 *.local
+config.js
 docs/TODO.md

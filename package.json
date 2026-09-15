@@ -1,0 +1,7 @@
+{
+  "name": "tools",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/generate-config.mjs"
+  }
+}

@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#f5f7fa">
+    <title>文件上传 · Tools</title>
+    <style>
+        :root {
+            --bg: #f5f7fa;
+            --panel: #ffffff;
+            --border: #e5e8ec;
+            --text: #1a1a2e;
+            --muted: #8a8f98;
+            --primary: #007aff;
+            --primary-press: #0062cc;
+            --success: #2fbf6b;
+            --danger: #ff3b30;
+            --radius: 14px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+            line-height: 1.5;
+        }
+        .container {
+            max-width: 760px;
+            width: 100%;
+            background: var(--panel);
+            border-radius: 18px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+            padding: 28px;
+            height: fit-content;
+        }
+        h1 { font-size: 22px; margin-bottom: 6px; }
+        .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+
+        /* —— 上传区（置顶、突出）—— */
+        .dropzone {
+            border: 2px dashed #9db8e8;
+            border-radius: var(--radius);
+            padding: 44px 20px;
+            text-align: center;
+            color: var(--muted);
+            cursor: pointer;
+            background: linear-gradient(180deg, #f0f7ff 0%, #ffffff 100%);
+            transition: border-color 0.15s, background 0.15s, transform 0.1s;
+        }
+        .dropzone:hover, .dropzone.dragover { border-color: var(--primary); background: #eaf3ff; }
+        .dropzone:active { transform: scale(0.99); }
+        .dropzone .icon { font-size: 34px; line-height: 1; margin-bottom: 10px; }
+        .dropzone .big { font-size: 17px; font-weight: 650; color: #1a1a2e; }
+        .dropzone .hint { font-size: 13px; margin-top: 6px; }
+
+        .file-list { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+        .file-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: #fafbfc;
+            flex-wrap: wrap;
+        }
+        .file-thumb {
+            width: 48px; height: 48px;
+            border-radius: 8px;
+            object-fit: cover;
+            flex-shrink: 0;
+            background: #eef0f3;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px; color: var(--muted);
+            overflow: hidden;
+        }
+        .file-thumb img { width: 100%; height: 100%; object-fit: cover; }
+        .file-meta { flex: 1; min-width: 0; }
+        .file-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .fmt-badge { display: inline-block; margin-left: 8px; font-size: 11px; font-weight: 700; color: var(--primary); background: #e3f1ff; padding: 1px 8px; border-radius: 20px; vertical-align: middle; }
+        .file-size { font-size: 12px; color: var(--muted); }
+        .file-size b { color: var(--text); font-weight: 600; }
+        .file-size .saved { color: var(--success); font-weight: 700; }
+        .file-status { font-size: 12px; font-weight: 600; flex-shrink: 0; }
+        .file-status.pending { color: var(--muted); }
+        .file-status.compress { color: var(--primary); }
+        .file-status.ready { color: var(--success); }
+        .file-status.upload { color: var(--primary); }
+        .file-status.done { color: var(--success); }
+        .file-status.error { color: var(--danger); }
+        .file-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+        .mini-btn {
+            background: #eceff3; border: none; border-radius: 8px;
+            padding: 6px 10px; font-size: 12px; cursor: pointer; color: #333;
+        }
+        .mini-btn:hover { background: #e2e6ea; }
+        .mini-btn.primary { background: #e3f1ff; color: var(--primary); }
+        .file-remove { background: none; border: none; cursor: pointer; font-size: 16px; color: var(--muted); padding: 4px 6px; border-radius: 6px; }
+        .file-remove:hover { color: var(--danger); background: #fbe9e7; }
+        .icon-btn {
+            background: none; border: none; cursor: pointer; color: var(--muted);
+            padding: 5px 6px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center;
+        }
+        .icon-btn:hover { color: var(--primary); background: #e3f1ff; }
+        .icon-btn svg { width: 16px; height: 16px; display: block; }
+        .icon-btn.copied { color: var(--success); background: #e8f8ef; }
+
+        .compare-panel {
+            flex-basis: 100%;
+            margin-top: 4px;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .compare {
+            position: relative; width: 100%; max-width: 380px; height: 210px;
+            border-radius: 10px; overflow: hidden; cursor: col-resize;
+            user-select: none; touch-action: none; background: #000; border: 1px solid var(--border);
+        }
+        .compare img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+        .compare .after { z-index: 1; }
+        .compare .before { z-index: 2; }
+        .compare .handle { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; z-index: 3; box-shadow: 0 0 6px rgba(0,0,0,.35); }
+        .compare .handle::after {
+            content: ""; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 30px; height: 30px; border-radius: 50%; background: #fff; border: 2px solid var(--primary);
+            box-shadow: 0 1px 4px rgba(0,0,0,.25);
+        }
+        .compare .tag {
+            position: absolute; top: 8px; z-index: 4; font-size: 11px; font-weight: 600;
+            color: #fff; background: rgba(0,0,0,.55); padding: 2px 8px; border-radius: 20px;
+        }
+        .compare .tag-before { left: 8px; }
+        .compare .tag-after { right: 8px; }
+
+        .settings { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-top: 16px; }
+        .field { flex: 1; min-width: 130px; }
+        label { display: block; font-size: 13px; font-weight: 600; color: #555; margin-bottom: 5px; }
+        select, input[type="number"] {
+            width: 100%; padding: 9px 10px; font-size: 14px;
+            border: 1.5px solid var(--border); border-radius: 10px; outline: none; background: #fff; color: var(--text);
+        }
+        input[type="range"] { width: 100%; accent-color: var(--primary); }
+        .range-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+        .fmt-hint { margin-top: 6px; font-size: 12px; color: #b8860b; }
+        .checkbox-line { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; font-weight: 500; }
+        .checkbox-line input { width: 18px; height: 18px; }
+
+        details.advanced { margin-top: 16px; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; background: #fafbfc; }
+        details.advanced summary { cursor: pointer; font-size: 14px; font-weight: 600; color: #555; }
+        details.advanced .field { margin-top: 12px; }
+        details.advanced input[type="text"], details.advanced input[type="password"] {
+            width: 100%; padding: 9px 10px; font-size: 14px;
+            border: 1.5px solid var(--border); border-radius: 10px; outline: none; background: #fff; color: var(--text);
+        }
+        .config-status { font-size: 12px; color: var(--muted); margin-top: 10px; }
+        .config-status.ok { color: var(--success); }
+        .config-status.warn { color: #b8860b; }
+
+        .btn-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+        .btn {
+            flex: 1; min-width: 130px;
+            padding: 13px 20px;
+            font-size: 15px; font-weight: 650;
+            border: none; border-radius: 10px; cursor: pointer;
+            transition: opacity 0.15s, transform 0.1s;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-primary { background: var(--primary); color: #fff; }
+        .btn-primary:hover:not(:disabled) { background: var(--primary-press); }
+        .btn-secondary { background: #eceff3; color: #333; }
+        .btn-secondary:hover:not(:disabled) { background: #e2e6ea; }
+
+        .note { margin-top: 20px; padding: 14px 18px; background: #fffbe6; border-radius: 10px; border-left: 4px solid #ffcc02; font-size: 13px; color: #5a4a00; line-height: 1.7; }
+        .empty { color: var(--muted); font-size: 13px; text-align: center; padding: 8px 0; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📤 文件上传</h1>
+    <p class="subtitle">图片自动压缩，上传到 GitHub；支持 JPG / PNG / WebP / GIF / PDF / TXT / ZIP</p>
+
+    <div class="dropzone" id="dropzone">
+        <div class="icon">⬆️</div>
+        <div class="big">点击选择文件，或拖拽到此处</div>
+        <div class="hint">单文件 ≤ 10MB，最多 5 个</div>
+    </div>
+    <input type="file" id="fileInput" multiple hidden
+        accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,application/zip">
+
+    <div class="file-list" id="fileList"></div>
+
+    <div class="settings">
+        <div class="field" style="min-width:180px;">
+            <label class="checkbox-line">
+                <input type="checkbox" id="compressEnabled" checked>
+                上传前压缩图片
+            </label>
+        </div>
+        <div class="field">
+            <label for="outFormat">输出格式</label>
+            <select id="outFormat">
+                <option value="image/webp" selected>WebP</option>
+                <option value="keep">保持原格式</option>
+                <option value="image/jpeg">JPEG</option>
+                <option value="image/png">PNG</option>
+            </select>
+            <div class="fmt-hint" id="fmtHint"></div>
+        </div>
+        <div class="field">
+            <label for="quality">质量 <span id="qualityVal" style="color:var(--muted);font-weight:400;">80</span></label>
+            <input type="range" id="quality" min="1" max="100" value="80">
+        </div>
+        <div class="field">
+            <label for="maxWidth">最大宽度</label>
+            <input type="number" id="maxWidth" min="1" placeholder="不限">
+        </div>
+        <div class="field">
+            <label for="maxHeight">最大高度</label>
+            <input type="number" id="maxHeight" min="1" placeholder="不限">
+        </div>
+    </div>
+
+    <details class="advanced" id="advSettings">
+        <summary>接口配置</summary>
+        <div class="field">
+            <label for="origin">API 地址</label>
+            <input type="text" id="origin" placeholder="https://vercel.keylenn.top">
+        </div>
+        <div class="field">
+            <label for="dir">存储目录 (path)</label>
+            <input type="text" id="dir" placeholder="uploads">
+        </div>
+        <div class="field">
+            <label for="token">鉴权 Token (Bearer)</label>
+            <input type="password" id="token" placeholder="UPLOAD_AUTH_TOKEN">
+        </div>
+    </details>
+    <div class="config-status" id="configStatus"></div>
+
+    <div class="btn-row">
+        <button class="btn btn-primary" id="uploadBtn" disabled>上传到服务器</button>
+        <button class="btn btn-secondary" id="recompressBtn" disabled>重新压缩</button>
+        <button class="btn btn-secondary" id="clearBtn">清空</button>
+    </div>
+
+    <div class="note">
+        ⚠️ <strong>说明</strong><br>
+        • 接口地址与 Token 通过 <code>config.js</code>（已 gitignore）配置，无需在页面填写；未配置时会显示上方「接口配置」。<br>
+        • 压缩依赖 <code>@mdehub/core</code>，仅对 JPG / PNG / WebP 图片生效，其余类型原样上传。
+    </div>
+</div>
+
+<script src="./config.js"></script>
+<script type="module">
+    let compressImage = null;
+    let compressImagePromise = null;
+    function loadCompressor() {
+        if (!compressImagePromise) {
+            compressImagePromise = import("https://cdn.jsdelivr.net/npm/@mdehub/core@0.1.0/+esm")
+                .then((m) => { compressImage = m.compressImage; })
+                .catch((e) => {
+                    compressImagePromise = null;
+                    throw new Error("压缩库加载失败：" + (e.message || String(e)));
+                });
+        }
+        return compressImagePromise;
+    }
+
+    const cfg = (window.TOOLS_CONFIG && window.TOOLS_CONFIG.upload) || {};
+    const DEFAULT_ORIGIN = "https://vercel.keylenn.top";
+    const DEFAULT_DIR = "uploads";
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    const MAX_FILES = 5;
+    const hasConfig = !!(cfg.api && cfg.token);
+
+    const els = {
+        origin: document.getElementById("origin"),
+        dir: document.getElementById("dir"),
+        token: document.getElementById("token"),
+        compressEnabled: document.getElementById("compressEnabled"),
+        outFormat: document.getElementById("outFormat"),
+        fmtHint: document.getElementById("fmtHint"),
+        quality: document.getElementById("quality"),
+        qualityVal: document.getElementById("qualityVal"),
+        maxWidth: document.getElementById("maxWidth"),
+        maxHeight: document.getElementById("maxHeight"),
+        dropzone: document.getElementById("dropzone"),
+        fileInput: document.getElementById("fileInput"),
+        fileList: document.getElementById("fileList"),
+        uploadBtn: document.getElementById("uploadBtn"),
+        recompressBtn: document.getElementById("recompressBtn"),
+        clearBtn: document.getElementById("clearBtn"),
+        advSettings: document.getElementById("advSettings"),
+        configStatus: document.getElementById("configStatus"),
+    };
+
+    let items = [];
+    let nextId = 1;
+
+    const MIME_TO_EXT = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp" };
+    const COMPRESSIBLE = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+    function keepMime(type) {
+        if (type === "image/png") return "image/png";
+        if (type === "image/webp") return "image/webp";
+        return "image/jpeg";
+    }
+
+    function mimeLabel(mime) {
+        return { "image/jpeg": "JPG", "image/png": "PNG", "image/webp": "WebP", "image/gif": "GIF" }[mime] || (mime || "").replace("image/", "").toUpperCase();
+    }
+
+    // —— 配置加载 ——
+    function initConfig() {
+        if (hasConfig) {
+            els.advSettings.style.display = "none";
+            els.configStatus.className = "config-status ok";
+            els.configStatus.textContent = `已从 config.js 加载配置（${cfg.api}，目录 ${cfg.dir || DEFAULT_DIR}）`;
+        } else {
+            els.advSettings.open = true;
+            els.configStatus.className = "config-status warn";
+            els.configStatus.textContent = "未检测到 config.js，请在下方填写（或复制 config.example.js 为 config.js）";
+            els.origin.value = cfg.api || localStorage.getItem("upload.api") || DEFAULT_ORIGIN;
+            els.dir.value = cfg.dir || localStorage.getItem("upload.dir") || DEFAULT_DIR;
+            els.token.value = cfg.token || localStorage.getItem("upload.token") || "";
+        }
+    }
+
+    function resolveSettings() {
+        if (hasConfig) {
+            return { origin: cfg.api, token: cfg.token, dir: cfg.dir || DEFAULT_DIR };
+        }
+        const o = els.origin.value.trim();
+        const t = els.token.value.trim();
+        const d = els.dir.value.trim();
+        try {
+            localStorage.setItem("upload.api", o);
+            localStorage.setItem("upload.token", t);
+            localStorage.setItem("upload.dir", d);
+        } catch (_) {}
+        return { origin: o, token: t, dir: d };
+    }
+
+    function formatSize(bytes) {
+        if (bytes == null) return "";
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+        return (bytes / 1024 / 1024).toFixed(2) + " MB";
+    }
+
+    function baseName(name) {
+        const i = String(name || "").lastIndexOf(".");
+        return i > 0 ? String(name).slice(0, i) : String(name || "file");
+    }
+
+    function statusLabel(item) {
+        switch (item.status) {
+            case "compressing": return "压缩中…";
+            case "uploading": return "上传中…";
+            case "done": return "已上传";
+            case "error": return "失败";
+            case "ready": return "待上传";
+            default: return "待压缩";
+        }
+    }
+
+    function buildCompare(beforeUrl, afterUrl) {
+        const wrap = document.createElement("div");
+        wrap.className = "compare";
+        const after = document.createElement("img");
+        after.className = "after"; after.src = afterUrl; after.alt = "压缩后";
+        const before = document.createElement("img");
+        before.className = "before"; before.src = beforeUrl; before.alt = "原图";
+        const handle = document.createElement("div");
+        handle.className = "handle";
+        const tagB = document.createElement("span");
+        tagB.className = "tag tag-before"; tagB.textContent = "原图";
+        const tagA = document.createElement("span");
+        tagA.className = "tag tag-after"; tagA.textContent = "压缩后";
+        wrap.append(after, before, handle, tagB, tagA);
+
+        const setPos = (clientX) => {
+            const rect = wrap.getBoundingClientRect();
+            if (!rect.width) return;
+            let p = (clientX - rect.left) / rect.width;
+            p = Math.max(0, Math.min(1, p)) * 100;
+            before.style.clipPath = "inset(0 " + (100 - p) + "% 0 0)";
+            handle.style.left = p + "%";
+        };
+        let dragging = false;
+        wrap.addEventListener("pointerdown", (e) => { dragging = true; wrap.setPointerCapture(e.pointerId); setPos(e.clientX); });
+        wrap.addEventListener("pointermove", (e) => { if (dragging) setPos(e.clientX); });
+        wrap.addEventListener("pointerup", () => { dragging = false; });
+        wrap.addEventListener("pointercancel", () => { dragging = false; });
+        requestAnimationFrame(() => {
+            const r = wrap.getBoundingClientRect();
+            setPos(r.left + r.width / 2);
+        });
+        return wrap;
+    }
+
+    function renderList() {
+        els.fileList.innerHTML = "";
+        if (!items.length) {
+            const p = document.createElement("div");
+            p.className = "empty";
+            p.textContent = "暂无文件";
+            els.fileList.appendChild(p);
+        }
+        items.forEach((item) => {
+            const div = document.createElement("div");
+            div.className = "file-item";
+
+            const thumb = document.createElement("div");
+            thumb.className = "file-thumb";
+            const thumbSrc = item.compressedUrl || item.originalUrl;
+            if (thumbSrc) {
+                const img = document.createElement("img");
+                img.src = thumbSrc;
+                thumb.appendChild(img);
+            } else {
+                thumb.textContent = "📄";
+            }
+
+            const meta = document.createElement("div");
+            meta.className = "file-meta";
+            const name = document.createElement("div");
+            name.className = "file-name";
+            name.textContent = item.file.name;
+            if (item.outMime && item.outMime !== item.file.type) {
+                const badge = document.createElement("span");
+                badge.className = "fmt-badge";
+                badge.textContent = mimeLabel(item.file.type) + " → " + mimeLabel(item.outMime);
+                name.appendChild(badge);
+            }
+            const size = document.createElement("div");
+            size.className = "file-size";
+            if (item.status === "ready" || item.status === "uploading" || item.status === "done") {
+                if (item.noGain) {
+                    size.innerHTML = `<b>${formatSize(item.file.size)}</b> <span class="saved">无需压缩</span>`;
+                } else {
+                    const saved = item.saved > 0 ? ` <span class="saved">(-${Math.round(item.saved)}%)</span>` : "";
+                    size.innerHTML = `<b>${formatSize(item.file.size)}</b> → <b>${formatSize(item.compressedSize)}</b>${saved}`;
+                }
+            } else {
+                size.textContent = formatSize(item.file.size);
+            }
+            meta.appendChild(name);
+            meta.appendChild(size);
+
+            const status = document.createElement("div");
+            status.className = "file-status " + item.status;
+            status.textContent = statusLabel(item);
+            if (item.error) status.title = item.error;
+
+            const actions = document.createElement("div");
+            actions.className = "file-actions";
+            if (item.status === "ready" && item.compressedUrl) {
+                const cmp = document.createElement("button");
+                cmp.className = "mini-btn primary";
+                cmp.textContent = item.compareOpen ? "收起对比" : "对比";
+                cmp.addEventListener("click", () => { item.compareOpen = !item.compareOpen; renderList(); });
+                actions.appendChild(cmp);
+                const dl = document.createElement("button");
+                dl.className = "mini-btn";
+                dl.textContent = "下载";
+                dl.addEventListener("click", () => {
+                    const a = document.createElement("a");
+                    a.href = item.compressedUrl;
+                    a.download = item.compressedFile ? item.compressedFile.name : item.file.name;
+                    a.click();
+                });
+                actions.appendChild(dl);
+            }
+            if (item.status === "done" && item.url) {
+                const copy = document.createElement("button");
+                copy.className = "icon-btn";
+                copy.title = "复制链接";
+                copy.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+                copy.addEventListener("click", async () => {
+                    try {
+                        await navigator.clipboard.writeText(item.url);
+                        copy.classList.add("copied");
+                        copy.title = "已复制";
+                        setTimeout(() => { copy.classList.remove("copied"); copy.title = "复制链接"; }, 1500);
+                    } catch (_) {
+                        prompt("复制失败，请手动复制：", item.url);
+                    }
+                });
+                actions.appendChild(copy);
+            }
+            const remove = document.createElement("button");
+            remove.className = "file-remove";
+            remove.textContent = "✕";
+            remove.title = "移除";
+            remove.addEventListener("click", () => removeItem(item.id));
+            actions.appendChild(remove);
+
+            div.appendChild(thumb);
+            div.appendChild(meta);
+            div.appendChild(status);
+            div.appendChild(actions);
+            els.fileList.appendChild(div);
+
+            if (item.compareOpen && item.originalUrl && item.compressedUrl) {
+                const panel = document.createElement("div");
+                panel.className = "compare-panel";
+                panel.appendChild(buildCompare(item.originalUrl, item.compressedUrl));
+                els.fileList.appendChild(panel);
+            }
+        });
+        els.uploadBtn.disabled = items.length === 0;
+        els.recompressBtn.disabled = !items.some((i) => COMPRESSIBLE.has(i.file.type));
+    }
+
+    function removeItem(id) {
+        const item = items.find((i) => i.id === id);
+        if (item) {
+            if (item.originalUrl) URL.revokeObjectURL(item.originalUrl);
+            if (item.compressedUrl) URL.revokeObjectURL(item.compressedUrl);
+        }
+        items = items.filter((i) => i.id !== id);
+        renderList();
+    }
+
+    function addFiles(fileList) {
+        const toCompress = [];
+        for (const file of fileList) {
+            if (items.length >= MAX_FILES) { alert(`最多同时上传 ${MAX_FILES} 个文件`); break; }
+            if (file.size > MAX_FILE_SIZE) { alert(`「${file.name}」超过 10MB 限制，已跳过`); continue; }
+            const item = {
+                id: nextId++,
+                file,
+                status: "pending",
+                originalSize: file.size,
+                compressedSize: file.size,
+                saved: 0,
+                noGain: false,
+                compareOpen: false,
+                originalUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+                compressedUrl: null,
+                compressedFile: null,
+                url: null,
+            };
+            items.push(item);
+            if (COMPRESSIBLE.has(file.type)) toCompress.push(item);
+        }
+        renderList();
+        if (els.compressEnabled.checked) toCompress.forEach(runCompress);
+    }
+
+    function runCompress(item) {
+        if (!COMPRESSIBLE.has(item.file.type)) return;
+        item.status = "compressing";
+        renderList();
+        const outFormat = els.outFormat.value;
+        const quality = Number(els.quality.value);
+        const maxWidth = els.maxWidth.value ? Number(els.maxWidth.value) : undefined;
+        const maxHeight = els.maxHeight.value ? Number(els.maxHeight.value) : undefined;
+
+        (async () => {
+            try {
+                await loadCompressor();
+                const keep = !outFormat || outFormat === "keep";
+                const outMime = keep ? keepMime(item.file.type) : outFormat;
+                const result = await compressImage(item.file, {
+                    preferWorker: false,
+                    mimeType: outMime,
+                    quality,
+                    maxWidth,
+                    maxHeight,
+                });
+                const mime = result.blob.type || outMime;
+                const ext = MIME_TO_EXT[mime] || (item.file.name.includes(".") ? item.file.name.slice(item.file.name.lastIndexOf(".")) : ".jpg");
+                const name = baseName(item.file.name) + ext;
+                const compressedFile = new File([result.blob], name, { type: mime });
+
+                if (compressedFile.size >= item.file.size) {
+                    // 重新编码后体积反而变大（常见于已优化过的 PNG / 低质量 JPEG）：保留原图
+                    item.compressedFile = item.file;
+                    item.compressedSize = item.file.size;
+                    item.saved = 0;
+                    item.noGain = true;
+                    item.outMime = item.file.type;
+                    item.outName = item.file.name;
+                    if (item.compressedUrl) URL.revokeObjectURL(item.compressedUrl);
+                    item.compressedUrl = null;
+                    item.status = "ready";
+                } else {
+                    item.compressedFile = compressedFile;
+                    item.compressedSize = compressedFile.size;
+                    item.saved = Math.max(0, Math.round((1 - compressedFile.size / item.file.size) * 100));
+                    item.noGain = false;
+                    if (item.compressedUrl) URL.revokeObjectURL(item.compressedUrl);
+                    item.compressedUrl = URL.createObjectURL(result.blob);
+                    item.outMime = mime;
+                    item.outName = name;
+                    item.status = "ready";
+                }
+            } catch (e) {
+                item.status = "error";
+                item.error = e.message || String(e);
+            }
+            renderList();
+        })();
+    }
+
+    function recompressAll() {
+        items.forEach((i) => { if (COMPRESSIBLE.has(i.file.type) && i.status !== "uploading") runCompress(i); });
+    }
+
+    function uploadFile(origin, token, dir, file, onProgress) {
+        return new Promise((resolve, reject) => {
+            const fd = new FormData();
+            fd.append("path", dir);
+            fd.append("file", file);
+            const xhr = new XMLHttpRequest();
+            const url = origin.replace(/\/+$/, "") + "/api/upload";
+            xhr.open("POST", url);
+            xhr.setRequestHeader("Authorization", "Bearer " + token);
+            xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+            xhr.onload = () => {
+                let body = null;
+                try { body = JSON.parse(xhr.responseText); } catch (_) {}
+                if (xhr.status >= 200 && xhr.status < 300 && body && body.code === 0) resolve(body.data);
+                else reject(new Error((body && body.message) || ("HTTP " + xhr.status)));
+            };
+            xhr.onerror = () => reject(new Error("网络错误"));
+            xhr.ontimeout = () => reject(new Error("请求超时"));
+            xhr.timeout = 60000;
+            xhr.send(fd);
+        });
+    }
+
+    async function doUpload() {
+        const settings = resolveSettings();
+        if (!settings.origin) { alert("请填写 API 地址"); return; }
+        if (!settings.token) { alert("请配置鉴权 Token（config.js 或下方接口配置）"); return; }
+
+        els.uploadBtn.disabled = true;
+        const compressEnabled = els.compressEnabled.checked;
+
+        for (const item of items) {
+            if (item.status === "done") continue;
+            try {
+                let toUpload = item.file;
+                if (compressEnabled && COMPRESSIBLE.has(item.file.type)) {
+                    if (item.status !== "ready") runCompress(item);
+                    while (item.status === "compressing") await new Promise((r) => setTimeout(r, 120));
+                    if (item.status === "error" || !item.compressedFile) throw new Error(item.error || "压缩失败");
+                    toUpload = item.compressedFile;
+                }
+                item.status = "uploading";
+                renderList();
+                const data = await uploadFile(settings.origin, settings.token, settings.dir, toUpload, () => {});
+                item.status = "done";
+                item.url = data.url;
+                renderList();
+            } catch (e) {
+                item.status = "error";
+                item.error = e.message || String(e);
+                renderList();
+            }
+        }
+        renderList();
+    }
+
+    els.dropzone.addEventListener("click", () => els.fileInput.click());
+    els.dropzone.addEventListener("dragover", (e) => { e.preventDefault(); els.dropzone.classList.add("dragover"); });
+    els.dropzone.addEventListener("dragleave", () => els.dropzone.classList.remove("dragover"));
+    els.dropzone.addEventListener("drop", (e) => { e.preventDefault(); els.dropzone.classList.remove("dragover"); if (e.dataTransfer && e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+    els.fileInput.addEventListener("change", () => { addFiles(els.fileInput.files); els.fileInput.value = ""; });
+    els.uploadBtn.addEventListener("click", doUpload);
+    els.recompressBtn.addEventListener("click", recompressAll);
+    els.clearBtn.addEventListener("click", () => {
+        items.forEach((i) => { if (i.originalUrl) URL.revokeObjectURL(i.originalUrl); if (i.compressedUrl) URL.revokeObjectURL(i.compressedUrl); });
+        items = [];
+        renderList();
+    });
+    els.quality.addEventListener("input", () => { els.qualityVal.textContent = els.quality.value; });
+
+    function updateFmtHint() {
+        const v = els.outFormat.value;
+        if (v === "keep") {
+            els.fmtHint.textContent = "提示：PNG 为无损重编码，可能不减反增；截图/照片建议选 WebP 获得更小体积。";
+        } else if (v === "image/png") {
+            els.fmtHint.textContent = "PNG 为无损格式，压缩率有限，无法达到 TinyPNG 级别。";
+        } else {
+            els.fmtHint.textContent = "";
+        }
+    }
+    els.outFormat.addEventListener("change", updateFmtHint);
+    updateFmtHint();
+
+    els.compressEnabled.addEventListener("change", () => {
+        if (els.compressEnabled.checked) {
+            items.forEach((i) => { if (COMPRESSIBLE.has(i.file.type) && i.status !== "ready" && i.status !== "compressing") runCompress(i); });
+        }
+        renderList();
+    });
+
+    initConfig();
+    renderList();
+</script>
+</body>
+</html>

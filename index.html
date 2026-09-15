@@ -4,6 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Tools · 让生活更简单</title>
+  <link rel="icon" type="image/png" href="public/index.logo.png" />
+  <link rel="apple-touch-icon" href="public/index.logo.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0f1115" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Tools" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <style>
     :root {
       --bg: #0f1115;
@@ -25,7 +33,9 @@
     }
     .wrap { max-width: 960px; margin: 0 auto; padding: 48px 24px 80px; }
     header { margin-bottom: 40px; }
-    h1 { font-size: 28px; font-weight: 650; letter-spacing: -0.03em; margin: 0 0 8px; }
+    .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .brand img { width: 40px; height: 40px; border-radius: 10px; }
+    h1 { font-size: 28px; font-weight: 650; letter-spacing: -0.03em; margin: 0; }
     .sub { color: var(--muted); font-size: 14px; }
     .status { color: var(--muted); font-size: 13px; margin: 24px 0; }
     .status.error { color: #ff8a8a; }
@@ -63,7 +73,10 @@
 <body>
   <div class="wrap">
     <header>
-      <h1>Tools</h1>
+      <div class="brand">
+        <img src="public/index.logo.png" alt="Tools" />
+        <h1>Tools</h1>
+      </div>
       <div class="sub">让生活更简单</div>
     </header>
     <div id="status" class="status">正在加载配置…</div>

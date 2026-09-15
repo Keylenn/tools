@@ -1,0 +1,17 @@
+{
+  "name": "Tools · 让生活更简单",
+  "short_name": "Tools",
+  "description": "让生活更简单",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f1115",
+  "theme_color": "#0f1115",
+  "icons": [
+    {
+      "src": "public/index.logo.png",
+      "sizes": "200x200",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -58,6 +58,17 @@
         .dropzone .big { font-size: 17px; font-weight: 650; color: #1a1a2e; }
         .dropzone .hint { font-size: 13px; margin-top: 6px; }
 
+        .warn-banner {
+            margin-top: 14px;
+            padding: 10px 14px;
+            background: #fef0ef;
+            border: 1px solid #ffd6d2;
+            border-left: 4px solid #ff3b30;
+            border-radius: 10px;
+            font-size: 13px;
+            color: #b3261e;
+        }
+
         .file-list { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
         .file-item {
             display: flex;
@@ -88,9 +99,9 @@
         .file-size .saved { color: var(--success); font-weight: 700; }
         .file-status { font-size: 12px; font-weight: 600; flex-shrink: 0; }
         .file-status.pending { color: var(--muted); }
-        .file-status.compress { color: var(--primary); }
+        .file-status.compressing { color: var(--primary); }
         .file-status.ready { color: var(--success); }
-        .file-status.upload { color: var(--primary); }
+        .file-status.uploading { color: var(--primary); }
         .file-status.done { color: var(--success); }
         .file-status.error { color: var(--danger); }
         .file-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
@@ -182,23 +193,27 @@
 <body>
 <div class="container">
     <h1>📤 文件上传</h1>
-    <p class="subtitle">图片自动压缩，上传到 GitHub；支持 JPG / PNG / WebP / GIF / PDF / TXT / ZIP</p>
+    <p class="subtitle">任意文件上传到 GitHub，图片自动压缩</p>
 
     <div class="dropzone" id="dropzone">
         <div class="icon">⬆️</div>
         <div class="big">点击选择文件，或拖拽到此处</div>
-        <div class="hint">单文件 ≤ 10MB，最多 5 个</div>
+        <div class="hint">任意格式，单文件 ≤ 10MB，最多 5 个</div>
     </div>
-    <input type="file" id="fileInput" multiple hidden
-        accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,application/zip">
+    <div class="warn-banner">⚠️ 存储为开源公开（GitHub + 公共 CDN），请勿上传包含敏感信息的资源。</div>
+    <input type="file" id="fileInput" multiple hidden>
 
     <div class="file-list" id="fileList"></div>
 
-    <div class="settings">
+    <div class="settings" id="compressSettings" style="display:none;">
         <div class="field" style="min-width:180px;">
             <label class="checkbox-line">
                 <input type="checkbox" id="compressEnabled" checked>
                 上传前压缩图片
+            </label>
+            <label class="checkbox-line" style="margin-top:8px;">
+                <input type="checkbox" id="smartCompress" checked>
+                智能压缩截图（优先体积）
             </label>
         </div>
         <div class="field">
@@ -251,7 +266,7 @@
     <div class="note">
         ⚠️ <strong>说明</strong><br>
         • 接口地址与 Token 通过 <code>config.js</code>（已 gitignore）配置，无需在页面填写；未配置时会显示上方「接口配置」。<br>
-        • 压缩依赖 <code>@mdehub/core</code>，仅对 JPG / PNG / WebP 图片生效，其余类型原样上传。
+        • 支持 JPG / PNG / WebP / AVIF / BMP 输入，可转换为 WebP / JPEG / PNG；智能模式会识别低色彩截图并按目标体积编码。
     </div>
 </div>
 
@@ -259,6 +274,7 @@
 <script type="module">
     let compressImage = null;
     let compressImagePromise = null;
+    let webpEncodePromise = null;
     function loadCompressor() {
         if (!compressImagePromise) {
             compressImagePromise = import("https://cdn.jsdelivr.net/npm/@mdehub/core@0.1.0/+esm")
@@ -269,6 +285,18 @@
                 });
         }
         return compressImagePromise;
+    }
+
+    function loadWebpEncoder() {
+        if (!webpEncodePromise) {
+            webpEncodePromise = import("https://cdn.jsdelivr.net/npm/@jsquash/webp@1.5.0/+esm")
+                .then((m) => m.encode)
+                .catch((e) => {
+                    webpEncodePromise = null;
+                    throw new Error("WebP 编码器加载失败：" + (e.message || String(e)));
+                });
+        }
+        return webpEncodePromise;
     }
 
     const cfg = (window.TOOLS_CONFIG && window.TOOLS_CONFIG.upload) || {};
@@ -283,6 +311,8 @@
         dir: document.getElementById("dir"),
         token: document.getElementById("token"),
         compressEnabled: document.getElementById("compressEnabled"),
+        smartCompress: document.getElementById("smartCompress"),
+        compressSettings: document.getElementById("compressSettings"),
         outFormat: document.getElementById("outFormat"),
         fmtHint: document.getElementById("fmtHint"),
         quality: document.getElementById("quality"),
@@ -303,16 +333,105 @@
     let nextId = 1;
 
     const MIME_TO_EXT = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp" };
-    const COMPRESSIBLE = new Set(["image/jpeg", "image/png", "image/webp"]);
+    const COMPRESSIBLE = new Set(["image/jpeg", "image/png", "image/webp", "image/avif", "image/bmp"]);
+    const EXT_TO_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", avif: "image/avif", bmp: "image/bmp" };
+    const ENCODER_DEFAULTS = {
+        quality: 80,
+        alphaQuality: 100,
+        effort: 6,
+        smartSubsample: true,
+        resize: false,
+    };
+
+    function fileMime(file) {
+        const declared = file.type === "image/jpg" ? "image/jpeg" : file.type;
+        if (declared) return declared;
+        const ext = (file.name.split(".").pop() || "").toLowerCase();
+        return EXT_TO_MIME[ext] || "";
+    }
 
     function keepMime(type) {
-        if (type === "image/png") return "image/png";
-        if (type === "image/webp") return "image/webp";
-        return "image/jpeg";
+        return MIME_TO_EXT[type] ? type : "image/webp";
     }
 
     function mimeLabel(mime) {
-        return { "image/jpeg": "JPG", "image/png": "PNG", "image/webp": "WebP", "image/gif": "GIF" }[mime] || (mime || "").replace("image/", "").toUpperCase();
+        return { "image/jpeg": "JPG", "image/png": "PNG", "image/webp": "WebP", "image/gif": "GIF", "image/avif": "AVIF", "image/bmp": "BMP" }[mime] || (mime || "").replace("image/", "").toUpperCase();
+    }
+
+    function targetDimensions(width, height, maxWidth, maxHeight) {
+        const scale = Math.min(
+            maxWidth ? maxWidth / width : 1,
+            maxHeight ? maxHeight / height : 1,
+            1,
+        );
+        return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+    }
+
+    function looksLikeScreenshot(imageData) {
+        // 以 5 bit/channel 采样颜色数量；界面截图通常颜色很少，照片会迅速超过阈值。
+        const colors = new Set();
+        const pixels = imageData.width * imageData.height;
+        const step = Math.max(1, Math.floor(pixels / 12000));
+        for (let pixel = 0; pixel < pixels; pixel += step) {
+            const i = pixel * 4;
+            colors.add(((imageData.data[i] >> 3) << 10) | ((imageData.data[i + 1] >> 3) << 5) | (imageData.data[i + 2] >> 3));
+            if (colors.size > 256) return false;
+        }
+        return true;
+    }
+
+    async function encodeWebpOptimized(file, { quality, maxWidth, maxHeight, smart }) {
+        const bitmap = await createImageBitmap(file);
+        try {
+            const size = targetDimensions(bitmap.width, bitmap.height, maxWidth, maxHeight);
+            const canvas = typeof OffscreenCanvas !== "undefined"
+                ? new OffscreenCanvas(size.width, size.height)
+                : Object.assign(document.createElement("canvas"), { width: size.width, height: size.height });
+            const ctx = canvas.getContext("2d", { alpha: true });
+            if (!ctx) throw new Error("浏览器不支持 Canvas 2D");
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = "high";
+            ctx.drawImage(bitmap, 0, 0, size.width, size.height);
+            const imageData = ctx.getImageData(0, 0, size.width, size.height);
+            const screenshot = smart && fileMime(file) === "image/png" && looksLikeScreenshot(imageData);
+            const targetSize = screenshot ? Math.max(2048, Math.round(file.size * 0.14)) : 0;
+            const encode = await loadWebpEncoder();
+            const encodeAt = (encodeQuality) => encode(imageData, {
+                quality: encodeQuality,
+                method: ENCODER_DEFAULTS.effort,
+                alpha_quality: ENCODER_DEFAULTS.alphaQuality,
+                use_sharp_yuv: ENCODER_DEFAULTS.smartSubsample ? 1 : 0,
+            });
+
+            let bytes;
+            if (targetSize) {
+                // libwebp-wasm 不执行 target_size，二分寻找满足目标体积的最高质量。
+                let low = 1;
+                let high = quality;
+                let best = null;
+                for (let attempt = 0; attempt < 7 && low <= high; attempt++) {
+                    const candidateQuality = Math.floor((low + high) / 2);
+                    const candidate = await encodeAt(candidateQuality);
+                    if (candidate.byteLength <= targetSize) {
+                        best = candidate;
+                        low = candidateQuality + 1;
+                    } else {
+                        high = candidateQuality - 1;
+                    }
+                }
+                bytes = best || await encodeAt(1);
+            } else {
+                bytes = await encodeAt(quality);
+            }
+            return {
+                blob: new Blob([bytes], { type: "image/webp" }),
+                width: size.width,
+                height: size.height,
+                smart: screenshot,
+            };
+        } finally {
+            bitmap.close();
+        }
     }
 
     // —— 配置加载 ——
@@ -432,10 +551,10 @@
             const name = document.createElement("div");
             name.className = "file-name";
             name.textContent = item.file.name;
-            if (item.outMime && item.outMime !== item.file.type) {
+            if (item.outMime && item.outMime !== item.inputMime) {
                 const badge = document.createElement("span");
                 badge.className = "fmt-badge";
-                badge.textContent = mimeLabel(item.file.type) + " → " + mimeLabel(item.outMime);
+                badge.textContent = mimeLabel(item.inputMime) + " → " + mimeLabel(item.outMime);
                 name.appendChild(badge);
             }
             const size = document.createElement("div");
@@ -444,8 +563,9 @@
                 if (item.noGain) {
                     size.innerHTML = `<b>${formatSize(item.file.size)}</b> <span class="saved">无需压缩</span>`;
                 } else {
+                    const smart = item.smartCompressed ? ` <span class="saved">智能</span>` : "";
                     const saved = item.saved > 0 ? ` <span class="saved">(-${Math.round(item.saved)}%)</span>` : "";
-                    size.innerHTML = `<b>${formatSize(item.file.size)}</b> → <b>${formatSize(item.compressedSize)}</b>${saved}`;
+                    size.innerHTML = `<b>${formatSize(item.file.size)}</b> → <b>${formatSize(item.compressedSize)}</b>${saved}${smart}`;
                 }
             } else {
                 size.textContent = formatSize(item.file.size);
@@ -515,7 +635,9 @@
             }
         });
         els.uploadBtn.disabled = items.length === 0;
-        els.recompressBtn.disabled = !items.some((i) => COMPRESSIBLE.has(i.file.type));
+        const hasImage = items.some((i) => COMPRESSIBLE.has(i.inputMime));
+        els.compressSettings.style.display = hasImage ? "flex" : "none";
+        els.recompressBtn.disabled = !hasImage;
     }
 
     function removeItem(id) {
@@ -533,48 +655,69 @@
         for (const file of fileList) {
             if (items.length >= MAX_FILES) { alert(`最多同时上传 ${MAX_FILES} 个文件`); break; }
             if (file.size > MAX_FILE_SIZE) { alert(`「${file.name}」超过 10MB 限制，已跳过`); continue; }
+            const inputMime = fileMime(file);
             const item = {
                 id: nextId++,
                 file,
+                inputMime,
                 status: "pending",
                 originalSize: file.size,
                 compressedSize: file.size,
                 saved: 0,
                 noGain: false,
                 compareOpen: false,
-                originalUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+                originalUrl: inputMime.startsWith("image/") ? URL.createObjectURL(file) : null,
                 compressedUrl: null,
                 compressedFile: null,
                 url: null,
             };
             items.push(item);
-            if (COMPRESSIBLE.has(file.type)) toCompress.push(item);
+            if (COMPRESSIBLE.has(inputMime)) toCompress.push(item);
         }
         renderList();
         if (els.compressEnabled.checked) toCompress.forEach(runCompress);
     }
 
     function runCompress(item) {
-        if (!COMPRESSIBLE.has(item.file.type)) return;
+        if (!COMPRESSIBLE.has(item.inputMime)) return;
+        const version = (item.compressVersion || 0) + 1;
+        item.compressVersion = version;
         item.status = "compressing";
+        item.error = null;
         renderList();
         const outFormat = els.outFormat.value;
-        const quality = Number(els.quality.value);
+        const quality = Number(els.quality.value) || ENCODER_DEFAULTS.quality;
         const maxWidth = els.maxWidth.value ? Number(els.maxWidth.value) : undefined;
         const maxHeight = els.maxHeight.value ? Number(els.maxHeight.value) : undefined;
 
         (async () => {
             try {
-                await loadCompressor();
                 const keep = !outFormat || outFormat === "keep";
-                const outMime = keep ? keepMime(item.file.type) : outFormat;
-                const result = await compressImage(item.file, {
-                    preferWorker: false,
-                    mimeType: outMime,
-                    quality,
-                    maxWidth,
-                    maxHeight,
-                });
+                const outMime = keep ? keepMime(item.inputMime) : outFormat;
+                let result;
+                if (outMime === "image/webp" && typeof createImageBitmap === "function") {
+                    try {
+                        result = await encodeWebpOptimized(item.file, {
+                            quality,
+                            maxWidth,
+                            maxHeight,
+                            smart: els.smartCompress.checked,
+                        });
+                    } catch (webpError) {
+                        console.warn("增强 WebP 编码失败，回退到通用编码器", webpError);
+                    }
+                }
+                if (!result) {
+                    await loadCompressor();
+                    result = await compressImage(item.file, {
+                        preferWorker: false,
+                        mimeType: outMime,
+                        quality,
+                        maxWidth,
+                        maxHeight,
+                    });
+                }
+                if (item.compressVersion !== version || !items.includes(item)) return;
                 const mime = result.blob.type || outMime;
                 const ext = MIME_TO_EXT[mime] || (item.file.name.includes(".") ? item.file.name.slice(item.file.name.lastIndexOf(".")) : ".jpg");
                 const name = baseName(item.file.name) + ext;
@@ -586,7 +729,8 @@
                     item.compressedSize = item.file.size;
                     item.saved = 0;
                     item.noGain = true;
-                    item.outMime = item.file.type;
+                    item.smartCompressed = false;
+                    item.outMime = item.inputMime;
                     item.outName = item.file.name;
                     if (item.compressedUrl) URL.revokeObjectURL(item.compressedUrl);
                     item.compressedUrl = null;
@@ -600,9 +744,11 @@
                     item.compressedUrl = URL.createObjectURL(result.blob);
                     item.outMime = mime;
                     item.outName = name;
+                    item.smartCompressed = Boolean(result.smart);
                     item.status = "ready";
                 }
             } catch (e) {
+                if (item.compressVersion !== version || !items.includes(item)) return;
                 item.status = "error";
                 item.error = e.message || String(e);
             }
@@ -611,7 +757,7 @@
     }
 
     function recompressAll() {
-        items.forEach((i) => { if (COMPRESSIBLE.has(i.file.type) && i.status !== "uploading") runCompress(i); });
+        items.forEach((i) => { if (COMPRESSIBLE.has(i.inputMime) && i.status !== "uploading" && i.status !== "done") runCompress(i); });
     }
 
     function uploadFile(origin, token, dir, file, onProgress) {
@@ -649,7 +795,7 @@
             if (item.status === "done") continue;
             try {
                 let toUpload = item.file;
-                if (compressEnabled && COMPRESSIBLE.has(item.file.type)) {
+                if (compressEnabled && COMPRESSIBLE.has(item.inputMime)) {
                     if (item.status !== "ready") runCompress(item);
                     while (item.status === "compressing") await new Promise((r) => setTimeout(r, 120));
                     if (item.status === "error" || !item.compressedFile) throw new Error(item.error || "压缩失败");
@@ -699,7 +845,7 @@
 
     els.compressEnabled.addEventListener("change", () => {
         if (els.compressEnabled.checked) {
-            items.forEach((i) => { if (COMPRESSIBLE.has(i.file.type) && i.status !== "ready" && i.status !== "compressing") runCompress(i); });
+            items.forEach((i) => { if (COMPRESSIBLE.has(i.inputMime) && i.status !== "ready" && i.status !== "compressing" && i.status !== "done") runCompress(i); });
         }
         renderList();
     });

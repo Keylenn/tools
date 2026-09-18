@@ -266,37 +266,27 @@
     <div class="note">
         ⚠️ <strong>说明</strong><br>
         • 接口地址与 Token 通过 <code>config.js</code>（已 gitignore）配置，无需在页面填写；未配置时会显示上方「接口配置」。<br>
-        • 支持 JPG / PNG / WebP / AVIF / BMP 输入，可转换为 WebP / JPEG / PNG；智能模式会识别低色彩截图并按目标体积编码。
+        • 使用 <code>@mdehub/core@0.2.0</code>，支持 JPG / PNG / WebP / AVIF / BMP 输入和 WebP / JPEG / PNG 输出；智能模式会识别低色彩 PNG 截图并按目标体积编码。
     </div>
 </div>
 
 <script src="./config.js"></script>
 <script type="module">
-    let compressImage = null;
+    // 0.2.0 已内置 WebP 编码和截图智能压缩，无需额外加载 @jsquash/webp。
     let compressImagePromise = null;
-    let webpEncodePromise = null;
     function loadCompressor() {
         if (!compressImagePromise) {
-            compressImagePromise = import("https://cdn.jsdelivr.net/npm/@mdehub/core@0.1.0/+esm")
-                .then((m) => { compressImage = m.compressImage; })
+            compressImagePromise = import("https://cdn.jsdelivr.net/npm/@mdehub/core@0.2.0/+esm")
+                .then(({ compressImage }) => {
+                    if (typeof compressImage !== "function") throw new Error("未找到 compressImage");
+                    return compressImage;
+                })
                 .catch((e) => {
                     compressImagePromise = null;
                     throw new Error("压缩库加载失败：" + (e.message || String(e)));
                 });
         }
         return compressImagePromise;
-    }
-
-    function loadWebpEncoder() {
-        if (!webpEncodePromise) {
-            webpEncodePromise = import("https://cdn.jsdelivr.net/npm/@jsquash/webp@1.5.0/+esm")
-                .then((m) => m.encode)
-                .catch((e) => {
-                    webpEncodePromise = null;
-                    throw new Error("WebP 编码器加载失败：" + (e.message || String(e)));
-                });
-        }
-        return webpEncodePromise;
     }
 
     const cfg = (window.TOOLS_CONFIG && window.TOOLS_CONFIG.upload) || {};
@@ -335,14 +325,6 @@
     const MIME_TO_EXT = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp" };
     const COMPRESSIBLE = new Set(["image/jpeg", "image/png", "image/webp", "image/avif", "image/bmp"]);
     const EXT_TO_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", avif: "image/avif", bmp: "image/bmp" };
-    const ENCODER_DEFAULTS = {
-        quality: 80,
-        alphaQuality: 100,
-        effort: 6,
-        smartSubsample: true,
-        resize: false,
-    };
-
     function fileMime(file) {
         const declared = file.type === "image/jpg" ? "image/jpeg" : file.type;
         if (declared) return declared;
@@ -356,82 +338,6 @@
 
     function mimeLabel(mime) {
         return { "image/jpeg": "JPG", "image/png": "PNG", "image/webp": "WebP", "image/gif": "GIF", "image/avif": "AVIF", "image/bmp": "BMP" }[mime] || (mime || "").replace("image/", "").toUpperCase();
-    }
-
-    function targetDimensions(width, height, maxWidth, maxHeight) {
-        const scale = Math.min(
-            maxWidth ? maxWidth / width : 1,
-            maxHeight ? maxHeight / height : 1,
-            1,
-        );
-        return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
-    }
-
-    function looksLikeScreenshot(imageData) {
-        // 以 5 bit/channel 采样颜色数量；界面截图通常颜色很少，照片会迅速超过阈值。
-        const colors = new Set();
-        const pixels = imageData.width * imageData.height;
-        const step = Math.max(1, Math.floor(pixels / 12000));
-        for (let pixel = 0; pixel < pixels; pixel += step) {
-            const i = pixel * 4;
-            colors.add(((imageData.data[i] >> 3) << 10) | ((imageData.data[i + 1] >> 3) << 5) | (imageData.data[i + 2] >> 3));
-            if (colors.size > 256) return false;
-        }
-        return true;
-    }
-
-    async function encodeWebpOptimized(file, { quality, maxWidth, maxHeight, smart }) {
-        const bitmap = await createImageBitmap(file);
-        try {
-            const size = targetDimensions(bitmap.width, bitmap.height, maxWidth, maxHeight);
-            const canvas = typeof OffscreenCanvas !== "undefined"
-                ? new OffscreenCanvas(size.width, size.height)
-                : Object.assign(document.createElement("canvas"), { width: size.width, height: size.height });
-            const ctx = canvas.getContext("2d", { alpha: true });
-            if (!ctx) throw new Error("浏览器不支持 Canvas 2D");
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = "high";
-            ctx.drawImage(bitmap, 0, 0, size.width, size.height);
-            const imageData = ctx.getImageData(0, 0, size.width, size.height);
-            const screenshot = smart && fileMime(file) === "image/png" && looksLikeScreenshot(imageData);
-            const targetSize = screenshot ? Math.max(2048, Math.round(file.size * 0.14)) : 0;
-            const encode = await loadWebpEncoder();
-            const encodeAt = (encodeQuality) => encode(imageData, {
-                quality: encodeQuality,
-                method: ENCODER_DEFAULTS.effort,
-                alpha_quality: ENCODER_DEFAULTS.alphaQuality,
-                use_sharp_yuv: ENCODER_DEFAULTS.smartSubsample ? 1 : 0,
-            });
-
-            let bytes;
-            if (targetSize) {
-                // libwebp-wasm 不执行 target_size，二分寻找满足目标体积的最高质量。
-                let low = 1;
-                let high = quality;
-                let best = null;
-                for (let attempt = 0; attempt < 7 && low <= high; attempt++) {
-                    const candidateQuality = Math.floor((low + high) / 2);
-                    const candidate = await encodeAt(candidateQuality);
-                    if (candidate.byteLength <= targetSize) {
-                        best = candidate;
-                        low = candidateQuality + 1;
-                    } else {
-                        high = candidateQuality - 1;
-                    }
-                }
-                bytes = best || await encodeAt(1);
-            } else {
-                bytes = await encodeAt(quality);
-            }
-            return {
-                blob: new Blob([bytes], { type: "image/webp" }),
-                width: size.width,
-                height: size.height,
-                smart: screenshot,
-            };
-        } finally {
-            bitmap.close();
-        }
     }
 
     // —— 配置加载 ——
@@ -643,6 +549,8 @@
     function removeItem(id) {
         const item = items.find((i) => i.id === id);
         if (item) {
+            item.compressVersion = (item.compressVersion || 0) + 1;
+            item.compressController?.abort();
             if (item.originalUrl) URL.revokeObjectURL(item.originalUrl);
             if (item.compressedUrl) URL.revokeObjectURL(item.compressedUrl);
         }
@@ -680,13 +588,16 @@
 
     function runCompress(item) {
         if (!COMPRESSIBLE.has(item.inputMime)) return;
+        item.compressController?.abort();
         const version = (item.compressVersion || 0) + 1;
+        const controller = new AbortController();
         item.compressVersion = version;
+        item.compressController = controller;
         item.status = "compressing";
         item.error = null;
         renderList();
         const outFormat = els.outFormat.value;
-        const quality = Number(els.quality.value) || ENCODER_DEFAULTS.quality;
+        const quality = Number(els.quality.value) || 80;
         const maxWidth = els.maxWidth.value ? Number(els.maxWidth.value) : undefined;
         const maxHeight = els.maxHeight.value ? Number(els.maxHeight.value) : undefined;
 
@@ -694,29 +605,19 @@
             try {
                 const keep = !outFormat || outFormat === "keep";
                 const outMime = keep ? keepMime(item.inputMime) : outFormat;
-                let result;
-                if (outMime === "image/webp" && typeof createImageBitmap === "function") {
-                    try {
-                        result = await encodeWebpOptimized(item.file, {
-                            quality,
-                            maxWidth,
-                            maxHeight,
-                            smart: els.smartCompress.checked,
-                        });
-                    } catch (webpError) {
-                        console.warn("增强 WebP 编码失败，回退到通用编码器", webpError);
-                    }
-                }
-                if (!result) {
-                    await loadCompressor();
-                    result = await compressImage(item.file, {
-                        preferWorker: false,
-                        mimeType: outMime,
-                        quality,
-                        maxWidth,
-                        maxHeight,
-                    });
-                }
+                const compressImage = await loadCompressor();
+                const result = await compressImage(item.file, {
+                    mimeType: outMime,
+                    quality,
+                    maxWidth,
+                    maxHeight,
+                    // 0.2.0 内置低色彩 PNG 截图识别和目标体积 WebP 编码。
+                    smart: outMime === "image/webp" && els.smartCompress.checked,
+                    signal: controller.signal,
+                    // jsDelivr 的单文件 ESM 入口不能解析库 Worker 内的裸模块依赖，
+                    // 因此在此页面使用同样支持 smart 的主线程路径。
+                    preferWorker: false,
+                });
                 if (item.compressVersion !== version || !items.includes(item)) return;
                 const mime = result.blob.type || outMime;
                 const ext = MIME_TO_EXT[mime] || (item.file.name.includes(".") ? item.file.name.slice(item.file.name.lastIndexOf(".")) : ".jpg");
@@ -751,6 +652,8 @@
                 if (item.compressVersion !== version || !items.includes(item)) return;
                 item.status = "error";
                 item.error = e.message || String(e);
+            } finally {
+                if (item.compressController === controller) item.compressController = null;
             }
             renderList();
         })();
@@ -824,7 +727,12 @@
     els.uploadBtn.addEventListener("click", doUpload);
     els.recompressBtn.addEventListener("click", recompressAll);
     els.clearBtn.addEventListener("click", () => {
-        items.forEach((i) => { if (i.originalUrl) URL.revokeObjectURL(i.originalUrl); if (i.compressedUrl) URL.revokeObjectURL(i.compressedUrl); });
+        items.forEach((i) => {
+            i.compressVersion = (i.compressVersion || 0) + 1;
+            i.compressController?.abort();
+            if (i.originalUrl) URL.revokeObjectURL(i.originalUrl);
+            if (i.compressedUrl) URL.revokeObjectURL(i.compressedUrl);
+        });
         items = [];
         renderList();
     });

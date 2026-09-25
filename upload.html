@@ -276,7 +276,7 @@
     let compressImagePromise = null;
     function loadCompressor() {
         if (!compressImagePromise) {
-            compressImagePromise = import("https://cdn.jsdelivr.net/npm/@mdehub/core@0.2.0/+esm")
+            compressImagePromise = import("https://cdn.jsdelivr.net/npm/@mdehub/core@0.2.1/+esm")
                 .then(({ compressImage }) => {
                     if (typeof compressImage !== "function") throw new Error("未找到 compressImage");
                     return compressImage;

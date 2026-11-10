@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0f1115" />
+  <title>Cast 终端录屏播放器 · Tools</title>
+  <link rel="stylesheet" href="https://unpkg.com/asciinema-player@3.10.0/dist/bundle/asciinema-player.css" />
+  <style>
+    :root { color-scheme:dark; --bg:#0f1115; --panel:#171a21; --line:#2a2f3a; --text:#e8eaed; --muted:#a0a7b4; --accent:#7ee0b0; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"PingFang SC",sans-serif; line-height:1.6; }
+    main { max-width:1120px; margin:0 auto; padding:28px 24px 64px; }
+    h1 { margin:0 0 6px; font-size:26px; letter-spacing:-.03em; }
+    h2 { margin:0 0 12px; font-size:16px; }
+    p { margin:0; }
+    header { margin-bottom:20px; }
+    .muted, .hint { color:var(--muted); font-size:13px; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 20px; }
+    #dropzone { display:block; padding:16px; border:2px dashed #475364; border-radius:10px; text-align:center; cursor:pointer; background:#11161b; }
+    #dropzone:hover, #dropzone.dragover { border-color:var(--accent); background:#192920; }
+    #dropzone strong { display:block; font-size:16px; margin-bottom:4px; }
+    #file { display:block; max-width:100%; margin:10px auto 0; font:inherit; font-size:13px; cursor:pointer; }
+    #file::file-selector-button, button { border:1px solid #526252; border-radius:7px; padding:7px 12px; background:#22352c; color:var(--text); cursor:pointer; font:inherit; font-size:13px; }
+    button:hover:not(:disabled) { border-color:var(--accent); }
+    button.secondary { background:#10141a; border-color:#475364; }
+    button:disabled { cursor:not-allowed; opacity:.5; }
+    :focus-visible { outline:2px solid var(--accent); outline-offset:4px; }
+    .toolbar, .actions { display:flex; align-items:center; flex-wrap:wrap; gap:12px 18px; }
+    .toolbar { margin-top:14px; }
+    .field, .check { display:flex; align-items:center; gap:8px; font-size:14px; }
+    select, input[type="number"] { min-width:0; border:1px solid #475364; border-radius:6px; padding:6px 8px; background:#10141a; color:var(--text); font:inherit; }
+    input[type="checkbox"] { width:16px; height:16px; margin:0; accent-color:var(--accent); }
+    .hint { margin-top:10px; }
+    #editor { margin-top:16px; }
+    fieldset { min-width:0; border:0; padding:0; margin:0; }
+    .edit-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:14px; }
+    .edit-field { display:flex; flex-direction:column; gap:5px; font-size:13px; }
+    .edit-field input { width:100%; }
+    #edit-summary { color:var(--accent); font-size:13px; }
+    #edit-status { margin-top:8px; min-height:21px; color:var(--muted); font-size:13px; overflow-wrap:anywhere; }
+    #edit-status[data-state="error"], #msg[data-state="error"] { color:#ff9b9b; }
+    #edit-warning { margin-top:8px; color:#e5c38a; font-size:12px; }
+    .status-row { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:8px; margin:20px 0 8px; }
+    #msg { font-size:14px; overflow-wrap:anywhere; }
+    #msg[data-state="success"] { color:var(--accent); }
+    #mode-state { color:var(--muted); font-size:12px; white-space:nowrap; }
+    #file-info { color:var(--muted); font-size:13px; overflow-wrap:anywhere; margin-bottom:10px; }
+    #player { min-height:180px; background:#080a0d; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+    #player:empty { display:grid; place-items:center; }
+    #player:empty::before { content:"终端录屏将在这里播放"; color:var(--muted); font-size:14px; }
+    #privacy { margin-top:18px; }
+    @media (max-width:600px) {
+      main { padding:22px 12px 40px; }
+      h1 { font-size:23px; }
+      .panel { padding:16px; }
+      .toolbar { gap:12px; }
+      .edit-grid { grid-template-columns:1fr; gap:10px; }
+      #player { min-height:140px; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Cast 终端录屏播放器</h1>
+    <p class="muted">本地回放、时间段裁剪与加速，下载可再次播放的 .cast 文件。</p>
+  </header>
+
+  <section class="panel" aria-label="文件与播放设置">
+    <label id="dropzone" for="file">
+      <strong>选择文件，或将 .cast 文件拖到这里</strong>
+      <span class="muted">支持 asciicast v1 / v2 / v3，原文件与处理结果最大 50 MiB</span>
+      <input type="file" id="file" accept=".cast,.json,application/json,application/x-asciicast" />
+    </label>
+    <div class="toolbar">
+      <button id="demo" type="button">播放示例</button>
+      <label class="field" for="theme">主题
+        <select id="theme">
+          <option value="asciinema">asciinema</option>
+          <option value="dracula">dracula</option>
+          <option value="monokai">monokai</option>
+          <option value="nord">nord</option>
+          <option value="solarized-dark">solarized-dark</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="loop" />循环播放</label>
+      <label class="check"><input type="checkbox" id="hide-controls" />隐藏控制器（纯播放模式）</label>
+    </div>
+    <p class="hint">主题仅影响本页预览，下载沿用录屏自带主题。更改播放设置会从头播放；取消勾选可恢复控制器。</p>
+  </section>
+
+  <section class="panel" id="editor" aria-label="裁剪与加速">
+    <h2>裁剪与加速</h2>
+    <form id="edit-form" novalidate>
+      <fieldset id="edit-fields" disabled>
+        <div class="edit-grid">
+          <label class="edit-field" for="trim-start">起点（原始时间轴 / 秒）
+            <input id="trim-start" type="number" min="0" step="any" value="0" />
+          </label>
+          <label class="edit-field" for="trim-end">终点（原始时间轴 / 秒）
+            <input id="trim-end" type="number" min="0" step="any" value="0" />
+          </label>
+          <label class="edit-field" for="speed">输出倍速（预览和下载均生效）
+            <input id="speed" type="number" min="0.25" max="8" step="any" value="1" list="speed-presets" />
+            <datalist id="speed-presets"><option value="0.25"></option><option value="0.5"></option><option value="1"></option><option value="1.5"></option><option value="2"></option><option value="4"></option><option value="8"></option></datalist>
+          </label>
+        </div>
+        <div class="actions">
+          <button id="apply-edit" type="submit">应用并预览</button>
+          <button id="reset-edit" class="secondary" type="button">恢复原始</button>
+          <button id="download-cast" class="secondary" type="button">下载处理后 .cast</button>
+        </div>
+      </fieldset>
+    </form>
+    <p id="edit-summary" class="hint" role="status" aria-live="polite">加载录屏后可编辑</p>
+    <p id="edit-status" role="status" aria-live="polite"></p>
+    <p id="edit-warning">裁剪不是敏感内容擦除：下载的 .cast 可能保留起点前的初始化输出。请勿用于脱敏。</p>
+    <p class="hint">修改范围或倍速后点击应用；下载会应用当前设置。按原始时间轴处理，不压缩空闲；导出统一为 asciicast v2，不改写源文件。</p>
+  </section>
+
+  <section aria-label="终端录屏">
+    <div class="status-row">
+      <p id="msg" role="status" aria-live="polite">请选择 .cast 文件，或播放示例</p>
+      <span id="mode-state">标准播放模式</span>
+    </div>
+    <p id="file-info">尚未加载录屏</p>
+    <div id="player" aria-label="终端播放区域"></div>
+  </section>
+  <p id="privacy" class="muted">文件仅在浏览器本地读取，不会上传。播放器资源通过 CDN 加载，首次打开需要网络。</p>
+</main>
+
+<script id="cast-core">
+  'use strict';
+
+  // 独立于 DOM 的录屏变换核心，由同一 HTML 内的界面和 Node 回归测试复用。
+  const CastCore = (() => {
+    function checkDimensions(width, height) {
+      if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) {
+        throw new Error('终端宽度和高度必须是正整数');
+      }
+      if (width > 1000 || height > 1000 || width * height > 200000) {
+        throw new Error('终端尺寸过大（每边最多 1000，最多 200000 个字符单元）');
+      }
+    }
+
+    function parseRecording(raw) {
+      const text = String(raw).replace(/^\uFEFF/, '').trim();
+      if (!text) throw new Error('文件为空，请选择有效的 .cast 录屏');
+      const lines = text.split(/\r?\n/);
+      let sourceHeader;
+      try { sourceHeader = JSON.parse(lines[0]); }
+      catch (_) {
+        try { sourceHeader = JSON.parse(text); }
+        catch (_) { throw new Error('不是有效的 .cast 文件：JSON 格式错误'); }
+        if (sourceHeader?.version !== 1) throw new Error('asciicast v2 / v3 的文件头必须独占一行');
+      }
+      if (!sourceHeader || typeof sourceHeader !== 'object' || Array.isArray(sourceHeader)) {
+        throw new Error('录屏文件头必须是 JSON 对象');
+      }
+      if (![1, 2, 3].includes(sourceHeader.version)) {
+        throw new Error('不支持的录屏版本，仅支持 asciicast v1 / v2 / v3');
+      }
+      const isV3 = sourceHeader.version === 3;
+      const width = isV3 ? sourceHeader.term?.cols : sourceHeader.width;
+      const height = isV3 ? sourceHeader.term?.rows : sourceHeader.height;
+      checkDimensions(width, height);
+      const events = [];
+      let duration = 0;
+      if (sourceHeader.version === 1) {
+        try { sourceHeader = JSON.parse(text); }
+        catch (_) { throw new Error('v1 文件必须是单个完整的 JSON 对象'); }
+        if (!Array.isArray(sourceHeader.stdout) || !sourceHeader.stdout.length) throw new Error('录屏没有输出事件');
+        for (const event of sourceHeader.stdout) {
+          if (!Array.isArray(event) || event.length !== 2 || !Number.isFinite(event[0]) || event[0] < 0 || typeof event[1] !== 'string') {
+            throw new Error('v1 输出事件应为 [非负延时, 输出文本]');
+          }
+          duration += event[0];
+          if (!Number.isFinite(duration)) throw new Error('录屏时长超出有效范围');
+          events.push([duration, 'o', event[1]]);
+        }
+      } else {
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line || (isV3 && line.startsWith('#'))) continue;
+          let event;
+          try { event = JSON.parse(line); }
+          catch (_) { throw new Error('第 ' + (i + 1) + ' 行不是有效的 JSON 事件'); }
+          if (!Array.isArray(event) || event.length !== 3 || !Number.isFinite(event[0]) || event[0] < 0 ||
+              (!isV3 && event[0] < duration) || typeof event[1] !== 'string' || event[1].length !== 1 || typeof event[2] !== 'string') {
+            throw new Error('第 ' + (i + 1) + ' 行事件无效：应为 [' + (isV3 ? '非负时间间隔' : '非递减时间') + ', 事件类型, 文本]');
+          }
+          if (event[1] === 'r') {
+            if (!/^\d+x\d+$/.test(event[2])) throw new Error('第 ' + (i + 1) + ' 行终端尺寸事件无效');
+            checkDimensions(...event[2].split('x').map(Number));
+          }
+          duration = isV3 ? duration + event[0] : event[0];
+          if (!Number.isFinite(duration)) throw new Error('录屏时长超出有效范围');
+          // 未知事件也占用时间，保留在统一时间轴内，交给播放器按格式约定忽略。
+          events.push([duration, event[1], event[2]]);
+        }
+        if (!events.length) throw new Error('录屏没有播放事件');
+      }
+      const header = { version:2, width, height };
+      // 只映射录屏元信息，不能将 v1 的 stdout 或旧 idle_time_limit 复制到导出头。
+      for (const key of ['timestamp', 'title', 'command', 'env']) {
+        if (Object.hasOwn(sourceHeader, key)) header[key] = sourceHeader[key];
+      }
+      const theme = isV3 ? sourceHeader.term?.theme : sourceHeader.theme;
+      if (theme !== undefined) header.theme = theme;
+      return { version:sourceHeader.version, width, height, duration, header, events };
+    }
+
+    function editRecording(source, { start, end, speed }) {
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end > source.duration) {
+        throw new Error('裁剪范围须满足：0 ≤ 起点 < 终点 ≤ 原始时长（零时长录屏无法剪辑）');
+      }
+      if (!Number.isFinite(speed) || speed < 0.25 || speed > 8) throw new Error('输出倍速须为 0.25～8 之间的有效数字');
+      const duration = (end - start) / speed;
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error('处理后的时长超出有效范围');
+      const events = [];
+      let initializationCount = 0;
+      for (const [time, type, data] of source.events) {
+        if (time > end) break;
+        if (time < start) {
+          if (type === 'o' || type === 'r') {
+            events.push([0, type, data]);
+            initializationCount++;
+          }
+        } else {
+          // 起点、终点均包含；不修改原数组，每次从原始数据重新计算。
+          events.push([(time - start) / speed, type, data]);
+        }
+      }
+      // 即使区间末尾没有事件，也保留完整的尾部空闲与正确总时长。
+      events.push([duration, 'o', '']);
+      const header = { ...source.header };
+      const text = [JSON.stringify(header), ...events.map(event => JSON.stringify(event))].join('\n') + '\n';
+      return { text, duration, start, end, speed, initializationCount };
+    }
+
+    function downloadName(name) {
+      let base = String(name || 'recording').replace(/\.(cast|json)$/i, '').replace(/[/\\:*?"<>|\u0000-\u001f]/g, '_').replace(/^[. ]+|[. ]+$/g, '');
+      base = Array.from(base || 'recording').slice(0, 120).join('');
+      return base + '.edited.cast';
+    }
+
+    return Object.freeze({ parseRecording, editRecording, downloadName });
+  })();
+</script>
+
+<script id="cast-ui">
+  'use strict';
+
+  const MAX_FILE_SIZE = 50 * 1024 * 1024;
+  const fileInput = document.getElementById('file');
+  const dropzone = document.getElementById('dropzone');
+  const container = document.getElementById('player');
+  const msg = document.getElementById('msg');
+  const fileInfo = document.getElementById('file-info');
+  const themeSelect = document.getElementById('theme');
+  const speedInput = document.getElementById('speed');
+  const startInput = document.getElementById('trim-start');
+  const endInput = document.getElementById('trim-end');
+  const editFields = document.getElementById('edit-fields');
+  const editSummary = document.getElementById('edit-summary');
+  const editStatus = document.getElementById('edit-status');
+  const loopCheckbox = document.getElementById('loop');
+  const hideControlsCheckbox = document.getElementById('hide-controls');
+  const modeState = document.getElementById('mode-state');
+  const downloadTimers = new Map();
+  let originalRecording = null;
+  let appliedRecording = null;
+  let active = null;
+  let loadSequence = 0;
+  let readingSequence = 0;
+  let libraryState = 'loading';
+
+  function log(message, state = '') {
+    msg.textContent = message;
+    msg.dataset.state = state;
+  }
+
+  function reportEdit(message, state = '') {
+    editStatus.textContent = message;
+    editStatus.dataset.state = state;
+  }
+
+  function formatDuration(seconds) {
+    return Math.floor(seconds / 60) + ':' + String(Math.floor(seconds % 60)).padStart(2, '0');
+  }
+
+  function prepareEdit(source, options) {
+    const result = CastCore.editRecording(source, options);
+    if (new Blob([result.text]).size > MAX_FILE_SIZE) throw new Error('处理结果超过 50 MiB，请选择较小的录屏或缩短区间');
+    return { ...result, name:source.name };
+  }
+
+  function showApplied() {
+    editSummary.textContent = '输出时长：' + appliedRecording.duration.toFixed(2) + ' 秒 · ' + appliedRecording.speed + '× · 导出格式：asciicast v2';
+    reportEdit('已应用原始时间轴 ' + appliedRecording.start + '～' + appliedRecording.end + ' 秒' +
+      (appliedRecording.initializationCount ? '；保留 ' + appliedRecording.initializationCount + ' 条起点初始化事件' : ''));
+  }
+
+  function clearDownloads() {
+    for (const [url, timer] of downloadTimers) {
+      clearTimeout(timer);
+      URL.revokeObjectURL(url);
+    }
+    downloadTimers.clear();
+  }
+
+  function releasePlayer() {
+    const previous = active;
+    active = null;
+    if (!previous) return;
+    clearTimeout(previous.timeout);
+    try { previous.player?.dispose(); }
+    catch (error) { console.warn('[cast] 释放旧播放器失败', error); }
+    finally {
+      if (previous.url) URL.revokeObjectURL(previous.url);
+      container.replaceChildren();
+    }
+  }
+
+  function renderRecording() {
+    if (!appliedRecording) return;
+    if (libraryState !== 'ready' || typeof window.AsciinemaPlayer?.create !== 'function') {
+      if (!readingSequence) log(libraryState === 'loading' ? '录屏已处理，正在加载播放器…' : '播放器未加载，仍可编辑和下载 .cast；请检查网络后刷新', libraryState === 'loading' ? '' : 'error');
+      return;
+    }
+    releasePlayer();
+    const recording = appliedRecording;
+    const slot = { player:null, url:null, sequence:loadSequence };
+    active = slot;
+    const isCurrent = () => active === slot;
+    const report = (message, state = '') => {
+      if (isCurrent() && slot.sequence === loadSequence && !readingSequence) log(message, state);
+    };
+    const fail = error => {
+      if (!isCurrent()) return;
+      clearTimeout(slot.timeout);
+      report('播放失败：' + (error?.message || error || '无法初始化录屏，请刷新重试'), 'error');
+    };
+    report('正在准备播放…');
+    try {
+      slot.url = URL.createObjectURL(new Blob([recording.text], { type:'application/x-asciicast' }));
+      slot.player = window.AsciinemaPlayer.create(
+        { url:slot.url, parser:'asciicast' }, container,
+        {
+          autoPlay:false, preload:true,
+          controls:!hideControlsCheckbox.checked,
+          loop:loopCheckbox.checked, theme:themeSelect.value,
+          // 倍速已写入输出时间轴；预览不能再次加速，也不能自动缩短空闲。
+          speed:1, idleTimeLimit:Infinity, fit:'width'
+        }
+      );
+      slot.timeout = setTimeout(() => {
+        if (!isCurrent()) return;
+        fail('播放器加载超时，请检查网络后重新应用设置');
+        releasePlayer();
+      }, 20000);
+      slot.player.addEventListener('metadata', () => {
+        if (!isCurrent()) return;
+        clearTimeout(slot.timeout);
+        slot.player.play().catch(fail);
+      });
+      slot.player.addEventListener('playing', () => report('正在播放 · ' + recording.name, 'success'));
+      slot.player.addEventListener('pause', () => report('播放已暂停 · ' + recording.name));
+      slot.player.addEventListener('ended', () => report('播放结束 · ' + recording.name, 'success'));
+      slot.player.addEventListener('errored', () => fail('录屏解析或播放器初始化失败'));
+    } catch (error) {
+      fail(error);
+      releasePlayer();
+    }
+  }
+
+  function openRecording(text, name) {
+    const source = { ...CastCore.parseRecording(text), name };
+    // 全部校验、生成成功后才替换现有录屏，坏文件不破坏当前预览和草稿。
+    const result = prepareEdit(source, { start:0, end:source.duration, speed:1 });
+    originalRecording = source;
+    appliedRecording = result;
+    startInput.value = '0';
+    endInput.value = String(source.duration);
+    startInput.max = endInput.max = String(source.duration);
+    speedInput.value = '1';
+    editFields.disabled = false;
+    clearDownloads();
+    fileInfo.textContent = name + ' · asciicast v' + source.version + ' · ' + source.width + ' × ' + source.height + ' · 原始时长 ' + formatDuration(source.duration);
+    showApplied();
+    renderRecording();
+  }
+
+  function applyEditing() {
+    if (!originalRecording || readingSequence) return false;
+    try {
+      // 空输入不能被 Number('') 静默转换成0。
+      if ([startInput, endInput, speedInput].some(input => !input.value.trim())) throw new Error('请填写起点、终点和输出倍速');
+      const options = { start:Number(startInput.value), end:Number(endInput.value), speed:Number(speedInput.value) };
+      appliedRecording = prepareEdit(originalRecording, options);
+      showApplied();
+      renderRecording();
+      return true;
+    } catch (error) {
+      reportEdit(error?.message || '无法应用编辑设置', 'error');
+      return false;
+    }
+  }
+
+  async function loadFile(file) {
+    if (!file) return;
+    const sequence = ++loadSequence;
+    readingSequence = sequence;
+    editFields.disabled = true;
+    log('正在读取：' + file.name);
+    try {
+      if (file.size > MAX_FILE_SIZE) throw new Error('文件超过 50 MiB，请选择较小的录屏');
+      const text = await file.text();
+      if (sequence !== loadSequence) return;
+      readingSequence = 0;
+      openRecording(text, file.name);
+    } catch (error) {
+      if (sequence === loadSequence) {
+        const message = '无法加载：' + (error?.message || '文件读取失败');
+        log(message, 'error');
+        reportEdit(message, 'error');
+      }
+    } finally {
+      if (sequence === loadSequence) {
+        readingSequence = 0;
+        editFields.disabled = !originalRecording;
+      }
+    }
+  }
+
+  document.getElementById('edit-form').addEventListener('submit', event => {
+    event.preventDefault();
+    applyEditing();
+  });
+  for (const input of [startInput, endInput, speedInput]) {
+    input.addEventListener('input', () => reportEdit('设置尚未应用，点击“应用并预览”或下载后生效'));
+  }
+  document.getElementById('reset-edit').addEventListener('click', () => {
+    if (!originalRecording || readingSequence) return;
+    startInput.value = '0';
+    endInput.value = String(originalRecording.duration);
+    speedInput.value = '1';
+    applyEditing();
+  });
+  document.getElementById('download-cast').addEventListener('click', () => {
+    if (!applyEditing()) return;
+    let url;
+    let anchor;
+    try {
+      url = URL.createObjectURL(new Blob([appliedRecording.text], { type:'application/x-asciicast' }));
+      anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = CastCore.downloadName(originalRecording.name);
+      document.body.appendChild(anchor);
+      anchor.click();
+      reportEdit('已触发下载：' + anchor.download + '；初始化输出可能保留裁剪前内容');
+      // 给浏览器足够时间开始读取下载内容，再释放；每份下载独立计时。
+      const timer = setTimeout(() => {
+        URL.revokeObjectURL(url);
+        downloadTimers.delete(url);
+      }, 30000);
+      downloadTimers.set(url, timer);
+    } catch (error) {
+      if (url) URL.revokeObjectURL(url);
+      reportEdit('下载失败：' + (error?.message || '请重试'), 'error');
+    } finally {
+      anchor?.remove();
+    }
+  });
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    fileInput.value = '';
+    void loadFile(file);
+  });
+  let dragDepth = 0;
+  dropzone.addEventListener('dragenter', event => {
+    event.preventDefault();
+    dragDepth++;
+    dropzone.classList.add('dragover');
+  });
+  dropzone.addEventListener('dragover', event => {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+  });
+  dropzone.addEventListener('dragleave', () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) dropzone.classList.remove('dragover');
+  });
+  dropzone.addEventListener('drop', event => {
+    event.preventDefault();
+    dragDepth = 0;
+    dropzone.classList.remove('dragover');
+    const files = event.dataTransfer?.files;
+    if (!files?.length) return;
+    if (files.length !== 1) {
+      ++loadSequence;
+      readingSequence = 0;
+      editFields.disabled = !originalRecording;
+      log('请一次选择一个 .cast 文件', 'error');
+      return;
+    }
+    void loadFile(files[0]);
+  });
+  for (const type of ['dragover', 'drop']) {
+    window.addEventListener(type, event => {
+      if (Array.from(event.dataTransfer?.types || []).includes('Files')) event.preventDefault();
+    });
+  }
+  for (const control of [themeSelect, loopCheckbox, hideControlsCheckbox]) {
+    control.addEventListener('change', () => {
+      modeState.textContent = hideControlsCheckbox.checked ? '纯播放模式' : '标准播放模式';
+      renderRecording();
+    });
+  }
+  document.getElementById('demo').addEventListener('click', () => {
+    ++loadSequence;
+    readingSequence = 0;
+    const demo = [
+      { version:3, term:{ cols:80, rows:18 } },
+      [0, 'o', '\u001b[1;32m$ \u001b[0mecho "Hello, asciicast v3!"\r\n'],
+      [1, 'o', 'Hello, asciicast v3!\r\n\r\n'],
+      [1, 'o', '\u001b[1;36mLocal terminal recording, playing in your browser.\u001b[0m\r\n'],
+      [2, 'o', 'Try trimming, output speed, loop and control-free mode.\r\n'],
+      [3, 'o', '\r\n\u001b[1;32m$ \u001b[0m'],
+      [3, 'x', '0']
+    ].map(line => JSON.stringify(line)).join('\n');
+    try { openRecording(demo, '内置示例.cast'); }
+    catch (error) { log('无法加载示例：' + error.message, 'error'); }
+  });
+
+  const libraryScript = document.createElement('script');
+  libraryScript.src = 'https://unpkg.com/asciinema-player@3.10.0/dist/bundle/asciinema-player.min.js';
+  libraryScript.async = true;
+  const libraryTimeout = setTimeout(() => {
+    if (libraryState !== 'loading') return;
+    libraryState = 'failed';
+    log('播放器加载超时，仍可编辑和下载 .cast；请检查网络后刷新', 'error');
+  }, 20000);
+  libraryScript.onload = () => {
+    clearTimeout(libraryTimeout);
+    libraryState = typeof window.AsciinemaPlayer?.create === 'function' ? 'ready' : 'failed';
+    if (libraryState === 'failed') log('播放器初始化失败，仍可编辑和下载 .cast', 'error');
+    else if (appliedRecording) renderRecording();
+    else if (!readingSequence) log('请选择 .cast 文件，或播放示例');
+  };
+  libraryScript.onerror = () => {
+    clearTimeout(libraryTimeout);
+    libraryState = 'failed';
+    log('播放器加载失败，仍可编辑和下载 .cast；请检查网络或 CDN', 'error');
+  };
+  document.head.appendChild(libraryScript);
+  window.addEventListener('pagehide', () => {
+    ++loadSequence;
+    readingSequence = 0;
+    clearTimeout(libraryTimeout);
+    clearDownloads();
+    releasePlayer();
+  });
+  window.addEventListener('pageshow', event => {
+    if (event.persisted && appliedRecording) renderRecording();
+  });
+</script>
+</body>
+</html>

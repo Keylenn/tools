@@ -266,7 +266,7 @@
     <div class="note">
         ⚠️ <strong>说明</strong><br>
         • 接口地址与 Token 通过 <code>config.js</code>（已 gitignore）配置，无需在页面填写；未配置时会显示上方「接口配置」。<br>
-        • 使用 <code>@mdehub/core@0.2.0</code>，支持 JPG / PNG / WebP / AVIF / BMP 输入和 WebP / JPEG / PNG 输出；智能模式会识别低色彩 PNG 截图并按目标体积编码。
+        • 使用 <code>@mdehub/core@0.2.0</code>，支持 JPG / PNG / WebP / AVIF / BMP 输入和 WebP / JPEG / PNG 输出；GIF 为保留动画，直接上传、不重编码；智能模式会识别低色彩 PNG 截图并按目标体积编码。
     </div>
 </div>
 
@@ -324,7 +324,7 @@
 
     const MIME_TO_EXT = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp" };
     const COMPRESSIBLE = new Set(["image/jpeg", "image/png", "image/webp", "image/avif", "image/bmp"]);
-    const EXT_TO_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", avif: "image/avif", bmp: "image/bmp" };
+    const EXT_TO_MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", avif: "image/avif", bmp: "image/bmp" };
     function fileMime(file) {
         const declared = file.type === "image/jpg" ? "image/jpeg" : file.type;
         if (declared) return declared;
@@ -568,11 +568,12 @@
                 id: nextId++,
                 file,
                 inputMime,
-                status: "pending",
+                // GIF 和非图片文件直接上传：避免 Canvas 重编码丢失 GIF 动画帧。
+                status: COMPRESSIBLE.has(inputMime) ? "pending" : "ready",
                 originalSize: file.size,
                 compressedSize: file.size,
                 saved: 0,
-                noGain: false,
+                noGain: !COMPRESSIBLE.has(inputMime),
                 compareOpen: false,
                 originalUrl: inputMime.startsWith("image/") ? URL.createObjectURL(file) : null,
                 compressedUrl: null,

@@ -113,6 +113,35 @@ test('两个内联脚本语法正确，运行态无额外依赖或转换接口',
   assert.match(html, /裁剪不是敏感内容擦除/);
 });
 
+test('常用指令区使用原生details/summary且默认折叠', () => {
+  const help = html.match(/<details\b[^>]*\bid="asciinema-commands"[^>]*>([\s\S]*?)<\/details>/);
+  assert.ok(help, '须有独立常用指令区');
+  const opening = help[0].slice(0, help[0].indexOf('>') + 1);
+  assert.doesNotMatch(opening, /\sopen(?:\s|=|>)/i, '不能设置open属性，包括open="false"');
+  assert.match(help[1], /^\s*<summary>asciinema 常用指令<\/summary>/);
+  assert.doesNotMatch(help[1], /<(?:script|button|input)\b|\son[a-z]+\s*=/i, '帮助仅展示文本，不自动执行命令');
+});
+
+test('常用指令包含录制、停止、回放、倍速、空闲与命令帮助', () => {
+  const help = html.match(/<details\b[^>]*\bid="asciinema-commands"[^>]*>([\s\S]*?)<\/details>/)?.[1] || '';
+  for (const command of ['asciinema rec demo.cast', 'asciinema play demo.cast', 'asciinema play -s 2 demo.cast', 'asciinema play -i 2 demo.cast', 'asciinema rec -c "ls -la" demo.cast', 'asciinema rec --help', 'asciinema play --help']) {
+    assert.ok(help.includes(command), '缺少常用命令：' + command);
+  }
+  assert.match(help, /<code>exit<\/code>/);
+  assert.match(help, /<kbd>Ctrl<\/kbd>\s*\+\s*<kbd>D<\/kbd>/);
+  assert.match(help, /本页不会运行命令/);
+  assert.match(help, /不改写文件/);
+});
+
+test('可选上传说明外发风险，并提供官方文档链接', () => {
+  const help = html.match(/<details\b[^>]*\bid="asciinema-commands"[^>]*>([\s\S]*?)<\/details>/)?.[1] || '';
+  assert.match(help, /asciinema upload demo\.cast/);
+  assert.match(help, /上传分享（可选）/);
+  assert.match(help, /上传会将录屏发送到外部服务/);
+  assert.match(help, /本页不会自动上传/);
+  assert.match(help, /href="https:\/\/docs\.asciinema\.org\/manual\/cli\/quick-start\/"[^>]*rel="noopener noreferrer"/);
+});
+
 for (const [name, raw] of [['v1单行', JSON.stringify(v1Header)], ['v1多行', JSON.stringify(v1Header, null, 2)], ['v2', v2], ['v3', v3]]) {
   test(`${name} 转为等价绝对时间，输出统一为v2`, () => {
     const source = core.parseRecording(raw);

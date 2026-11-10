@@ -50,12 +50,24 @@
     #player:empty { display:grid; place-items:center; }
     #player:empty::before { content:"终端录屏将在这里播放"; color:var(--muted); font-size:14px; }
     #privacy { margin-top:18px; }
+    .commands { margin-bottom:16px; }
+    .commands > summary { cursor:pointer; font-size:15px; font-weight:600; }
+    .commands > summary::marker { color:var(--accent); }
+    .commands[open] > summary { margin-bottom:12px; }
+    .command-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px 20px; margin-top:14px; }
+    .command-grid h3 { margin:0; font-size:14px; font-weight:600; }
+    .command-grid pre { margin:6px 0; padding:10px 12px; border:1px solid var(--line); border-radius:7px; background:#10141a; font-size:13px; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .command-grid p { color:var(--muted); font-size:12px; }
+    .commands a { color:var(--accent); }
+    .commands kbd { border:1px solid #475364; border-radius:4px; padding:0 4px; font-size:12px; }
+    .command-warning { margin-top:14px; color:#e5c38a; font-size:12px; }
     @media (max-width:600px) {
       main { padding:22px 12px 40px; }
       h1 { font-size:23px; }
       .panel { padding:16px; }
       .toolbar { gap:12px; }
       .edit-grid { grid-template-columns:1fr; gap:10px; }
+      .command-grid { grid-template-columns:1fr; }
       #player { min-height:140px; }
     }
   </style>
@@ -66,6 +78,56 @@
     <h1>Cast 终端录屏播放器</h1>
     <p class="muted">本地回放、时间段裁剪与加速，下载可再次播放的 .cast 文件。</p>
   </header>
+
+  <details class="panel commands" id="asciinema-commands">
+    <summary>asciinema 常用指令</summary>
+    <p class="hint">以下命令在已安装 asciinema CLI 的本机终端中手动执行，本页不会运行命令。示例使用 demo.cast 作为录屏文件名。</p>
+    <div class="command-grid">
+      <div>
+        <h3>录制终端</h3>
+        <pre><code>asciinema rec demo.cast</code></pre>
+        <p>开始录制 shell 会话，并保存到本地文件。</p>
+      </div>
+      <div>
+        <h3>结束录制</h3>
+        <pre><code>exit</code></pre>
+        <p>在录制的 shell 中输入 exit，或按 <kbd>Ctrl</kbd> + <kbd>D</kbd>。录制指定程序时，程序退出后录制结束。</p>
+      </div>
+      <div>
+        <h3>回放录屏</h3>
+        <pre><code>asciinema play demo.cast</code></pre>
+        <p>直接在终端回放；也可将文件拖入本页播放。</p>
+      </div>
+      <div>
+        <h3>2× 倍速回放</h3>
+        <pre><code>asciinema play -s 2 demo.cast</code></pre>
+        <p>仅调整本次回放速度，不改写文件；本页“输出倍速”则会写入下载的时间轴。</p>
+      </div>
+      <div>
+        <h3>限制回放空闲时间</h3>
+        <pre><code>asciinema play -i 2 demo.cast</code></pre>
+        <p>将相邻事件之间的空闲等待限制为最多 2 秒。</p>
+      </div>
+      <div>
+        <h3>录制指定命令</h3>
+        <pre><code>asciinema rec -c "ls -la" demo.cast</code></pre>
+        <p>将引号内的内容替换为要录制的命令，命令结束后停止录制。</p>
+      </div>
+      <div>
+        <h3>查看命令帮助</h3>
+        <pre><code>asciinema rec --help
+asciinema play --help</code></pre>
+        <p>不同版本的可用选项可能不同，以本机帮助为准。</p>
+      </div>
+      <div>
+        <h3>上传分享（可选）</h3>
+        <pre><code>asciinema upload demo.cast</code></pre>
+        <p>手动上传到配置的 asciinema 服务，默认是 asciinema.org；仅本地回放不需要上传。</p>
+      </div>
+    </div>
+    <p class="command-warning">上传会将录屏发送到外部服务，分享前请检查敏感信息；本页不会自动上传。裁剪下载也不等于脱敏。</p>
+    <p class="hint">参考：<a href="https://docs.asciinema.org/manual/cli/quick-start/" target="_blank" rel="noopener noreferrer">asciinema 官方快速入门</a></p>
+  </details>
 
   <section class="panel" aria-label="文件与播放设置">
     <label id="dropzone" for="file">
